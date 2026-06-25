@@ -21,8 +21,12 @@ from fastmcp import FastMCP
 from app.retriever import search as _search, _get_vectorstore as _warmup_retriever
 from app.register_tool import register_lookup as _register_lookup
 from app.figure_tool import get_figure as _get_figure
+from app.figure_server import start_figure_server, figure_url as _figure_url
 
 mcp = FastMCP("hardware-um")
+
+# Start HTTP server for figure images (runs in daemon thread, port 7477)
+_FIGURE_SERVER_PORT = start_figure_server()
 
 # Eager-load the embedding model and vectorstore at startup so the first
 # tool call doesn't time out waiting for sentence-transformers to load.
@@ -65,14 +69,19 @@ def register_lookup(name: str, chip_part: str) -> list[dict]:
 def get_figure(figure_id: str, chip_part: str) -> dict | None:
     """Retrieve a figure by its ID (e.g. 'Figure 13.2').
 
-    Returns caption, VLM summary, and image path.
+    Returns caption, VLM summary, image_path, and image_url (HTTP URL to
+    the figure image served locally at http://127.0.0.1:7477).
     Returns null for unknown figure IDs.
 
     Args:
         figure_id: Figure identifier, e.g. "Figure 13.2"
         chip_part: Chip identifier, e.g. "RA6M4"
     """
-    return _get_figure(figure_id, chip_part)
+    result = _get_figure(figure_id, chip_part)
+    if result is None:
+        return None
+    result["image_url"] = _figure_url(result.get("image_path", ""))
+    return result
 
 
 if __name__ == "__main__":
