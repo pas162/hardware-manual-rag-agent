@@ -1,0 +1,16 @@
+pymupdf
+pdfplumber
+chromadb
+langchain
+langchain-community
+langchain-chroma
+langchain-text-splitters
+langchain-huggingface
+sentence-transformers
+pillow
+sqlite-utils
+rank_bm25
+mcp
+fastmcp
+pydantic
+python-dotenv

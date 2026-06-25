@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "hardware-um": {
+      "command": "C:\\Son\\9_Tasks\\AI_POC\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "app.mcp_server"],
+      "cwd": "C:\\Son\\9_Tasks\\AI_POC",
+      "env": {
+        "PYTHONPATH": "C:\\Son\\9_Tasks\\AI_POC",
+        "HF_HUB_OFFLINE": "1",
+        "TRANSFORMERS_OFFLINE": "1"
+      }
+    }
+  }
+}

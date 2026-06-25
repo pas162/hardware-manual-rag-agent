@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+*.egg-info/
+
+# Data — large binary/generated files, not source code
+data/store
+data/parsed
+data/figures
+data/pdfs
+
+# Keep registry
+data/registry.json
+!data/registry.json
+
+# Env
+.env
+*.env
+
+# Claude Code session state
+.claude/
+
+# IDE
+.vscode/settings.json
+*.suo
+.vs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp/scratch
+_verify_tables*.py
