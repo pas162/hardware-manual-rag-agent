@@ -69,18 +69,34 @@ def register_lookup(name: str, chip_part: str) -> list[dict]:
 def get_figure(figure_id: str, chip_part: str) -> dict | None:
     """Retrieve a figure by its ID (e.g. 'Figure 13.2').
 
-    Returns caption, VLM summary, image_path, and image_url (HTTP URL to
-    the figure image served locally at http://127.0.0.1:7477).
+    Returns caption, VLM summary, image_path, and image_data (base64-encoded
+    PNG as a data URI: 'data:image/png;base64,...') so the agent can render
+    and analyse the figure image directly via vision.
     Returns null for unknown figure IDs.
 
     Args:
         figure_id: Figure identifier, e.g. "Figure 13.2"
         chip_part: Chip identifier, e.g. "RA6M4"
     """
+    import base64
+    from pathlib import Path as _Path
+
     result = _get_figure(figure_id, chip_part)
     if result is None:
         return None
+
     result["image_url"] = _figure_url(result.get("image_path", ""))
+
+    # Embed image as base64 data URI so the agent can view it via vision
+    image_path = result.get("image_path", "")
+    if image_path:
+        _ROOT = _Path(__file__).resolve().parent.parent
+        abs_path = _ROOT / image_path
+        if abs_path.is_file():
+            raw = abs_path.read_bytes()
+            b64 = base64.b64encode(raw).decode("ascii")
+            result["image_data"] = f"data:image/png;base64,{b64}"
+
     return result
 
 

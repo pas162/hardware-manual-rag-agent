@@ -27,9 +27,10 @@ data/registry.json
 *.suo
 .vs/
 
+# Evaluation / benchmark outputs
+eval_output/
+eval_camelot.py
+
 # OS
 .DS_Store
 Thumbs.db
-
-# Temp/scratch
-_verify_tables*.py

@@ -1,173 +1,118 @@
 """
-Detect register tables in a PDF UM using pdfplumber.
+Detect tables in a PDF UM using camelot (lattice mode).
 
-A table is classified as a register table when its header row matches >= 3 of:
-  {Bit, Bit Name, Symbol, Value, R/W, Reset, Description}  (case-insensitive)
+camelot lattice handles merged-cell headers correctly, producing clean
+column labels like "IELSRn > Connect to NVIC" instead of pdfplumber's
+flattened first-row output.
 
-Output: data/parsed/tables.jsonl — one JSON object per detected register table.
+Output: data/parsed/tables.jsonl — one JSON object per detected table.
 """
 
 import json
 import re
 from pathlib import Path
 
-import pdfplumber
+import camelot
+import fitz  # PyMuPDF — used only to get page height for bbox conversion
 
 REGISTER_HEADER_KEYWORDS = {"symbol", "value", "r/w", "reset", "description", "function"}
-# A register table MUST have a "Bit" column, plus at least one other register keyword.
 _RE_BIT_CELL = re.compile(r"^bit\b", re.IGNORECASE)
-
-
-def _is_register_table(rows: list[list]) -> bool:
-    if not rows:
-        return False
-    # The actual header row may be row[0] or row[1] (some tables have a merged title row first)
-    for candidate_row in rows[:2]:
-        if candidate_row is None:
-            continue
-        header_cells = [str(c).strip() for c in candidate_row if c]
-        header_lower = {c.lower() for c in header_cells}
-        # Must have a "Bit" or "Bit Name" column — eliminates all non-register tables
-        has_bit = any(_RE_BIT_CELL.match(c) for c in header_cells)
-        if not has_bit:
-            continue
-        # Plus at least one other register-specific column
-        other_matches = sum(1 for kw in REGISTER_HEADER_KEYWORDS if any(kw in cell for cell in header_lower))
-        if other_matches >= 1:
-            return True
-    return False
-
-
-def _rows_to_dicts(rows: list[list]) -> tuple[list[str], list[dict]]:
-    """Return (header, data_rows). Skips title rows like 'Table X.Y ...'."""
-    if len(rows) < 1:
-        return [], []
-
-    # For register tables, prefer the row that has "Bit" + other keywords
-    header_idx = 0
-    register_found = False
-    for i, row in enumerate(rows[:3]):
-        if row is None:
-            continue
-        cells = [str(c).strip() for c in row if c]
-        cells_lower = {c.lower() for c in cells}
-        has_bit = any(_RE_BIT_CELL.match(c) for c in cells)
-        other = sum(1 for kw in REGISTER_HEADER_KEYWORDS if any(kw in cell for cell in cells_lower))
-        if has_bit and other >= 1:
-            header_idx = i
-            register_found = True
-            break
-
-    if not register_found:
-        # For general tables: pick the row with the most non-empty cells among
-        # the first 5 rows, skipping any row whose first cell is a table title.
-        best_idx = 0
-        best_count = -1
-        for i, row in enumerate(rows[:5]):
-            if row is None:
-                continue
-            cells = [str(c).strip() for c in row if c]
-            if cells and _RE_TABLE_TITLE.match(cells[0]):
-                continue
-            nonempty = sum(1 for c in row if c and str(c).strip())
-            if nonempty > best_count:
-                best_count = nonempty
-                best_idx = i
-        header_idx = best_idx
-
-    header = [str(c).strip() if c else "" for c in rows[header_idx]]
-    result = []
-    for row in rows[header_idx + 1:]:
-        if row is None:
-            continue
-        cells = [str(c).strip() if c else "" for c in row]
-        d = dict(zip(header, cells))
-        # Normalise "Function" column → also store as "description"
-        if "Function" in d and "Description" not in d:
-            d["Description"] = d["Function"]
-        result.append(d)
-    return header, result
-
-
 _RE_TABLE_TITLE = re.compile(r"^Table\s+\d+\.\d+", re.IGNORECASE)
+_RE_REG_NAME_HEADING = re.compile(r"\b([A-Z][A-Z0-9_]{2,}(?:n|m)?)\s*(?::|Register|Reg\.?)")
+_RE_PERIPHERAL_HEADING = re.compile(r"§\s*\d+(?:\.\d+)*\s+([A-Z][A-Za-z0-9 _/\-]+?)(?:\s*>|\s*$)")
 
 
-def _find_header_and_title(rows: list[list]) -> tuple[int, str]:
-    """Return (header_row_index, table_title).
+# ---------------------------------------------------------------------------
+# Header building (handles single-row and multi-row merged-cell headers)
+# ---------------------------------------------------------------------------
 
-    Handles two layouts:
-      - rows[0] = ["Table X.Y Some Title", ""]  → title row, header is rows[1]
-      - rows[0] = ["Feature", "Description"]    → no title, header is rows[0]
+def _looks_like_data_row(cells: list[str]) -> bool:
+    """Return True if a row contains data values rather than header labels."""
+    indicators = 0
+    for c in cells:
+        c = c.strip()
+        if c.startswith("0x") or c.startswith("0X"):
+            indicators += 1
+        if c in ("✓", "—", "×", "●", "○"):
+            indicators += 1
+    return indicators >= 2
+
+
+def _detect_header_end(df) -> int:
+    """Return the index of the first data row (everything before is header)."""
+    for i in range(min(4, len(df))):
+        if _looks_like_data_row([str(df.iloc[i, c]).strip() for c in range(len(df.columns))]):
+            return i
+    return 1
+
+
+def _build_header(df, header_end: int) -> list[str]:
     """
-    title = ""
-    for i, row in enumerate(rows[:3]):
-        if row is None:
-            continue
-        first_cell = str(row[0]).strip() if row else ""
-        if _RE_TABLE_TITLE.match(first_cell):
-            title = first_cell
-            # Header is the next non-None row
-            for j in range(i + 1, min(i + 3, len(rows))):
-                if rows[j] is not None:
-                    return j, title
+    Build clean column labels from a multi-row header block.
+
+    Strategy:
+    1. Forward-fill each header row (merged cell → repeat label rightward).
+    2. Use original blank info to distinguish sub-labels from carry-over:
+       only include a row's value if the original cell was non-blank,
+       OR if it's the first (group) row.
+    3. Combine group + sub as "Group > Sub"; standalone columns use label only.
+    """
+    n_cols = len(df.columns)
+
+    # Build filled and original rows
+    filled_rows: list[list[str]] = []
+    orig_rows: list[list[str]] = []
+    for row_idx in range(header_end):
+        orig = [str(df.iloc[row_idx, c]).strip() for c in range(n_cols)]
+        orig_rows.append(orig)
+        last = ""
+        filled = []
+        for cell in orig:
+            if cell:
+                last = cell
+            filled.append(last)
+        filled_rows.append(filled)
+
+    if not filled_rows:
+        return [f"col{c}" for c in range(n_cols)]
+
+    result = []
+    for col in range(n_cols):
+        parts: list[str] = []
+        for row_idx, (filled_row, orig_row) in enumerate(zip(filled_rows, orig_rows)):
+            label = filled_row[col] if (orig_row[col] or row_idx == 0) else ""
+            label = re.sub(r"\s*\n\s*", " ", label).strip()
+            if label and label not in parts:
+                parts.append(label)
+        if not parts:
+            result.append(f"col{col}")
+        elif len(parts) == 1:
+            result.append(parts[0])
         else:
-            return i, title
-    return 0, title
+            result.append(" > ".join(parts))
+
+    return result
 
 
-_RE_REG_NAME_HEADING = re.compile(
-    r"\b([A-Z][A-Z0-9_]{2,}(?:n|m)?)\s*(?::|Register|Reg\.?)",
-)
-_RE_PERIPHERAL_HEADING = re.compile(
-    r"§\s*\d+(?:\.\d+)*\s+([A-Z][A-Za-z0-9 _/\-]+?)(?:\s*>|\s*$)",
-)
+# ---------------------------------------------------------------------------
+# Register table detection
+# ---------------------------------------------------------------------------
+
+def _is_register_header(header: list[str]) -> bool:
+    """Return True if this looks like a register bit-field table."""
+    cells_lower = {c.lower() for c in header if c}
+    has_bit = any(_RE_BIT_CELL.match(c) for c in header if c)
+    if not has_bit:
+        return False
+    other = sum(1 for kw in REGISTER_HEADER_KEYWORDS if any(kw in cell for cell in cells_lower))
+    return other >= 1
 
 
-def _extract_register_name(section_path: str, page_blocks: list[dict]) -> tuple[str, str]:
-    """Return (register_name, peripheral) from the section heading or nearby text."""
-    reg_name = ""
-    peripheral = "UNKNOWN"
-
-    if section_path:
-        parts = section_path.split(">")
-        deepest = parts[-1].strip() if parts else ""
-
-        # Register name: deepest segment matching "§X.Y REGNAME :" or "§X.Y REGNAME/"
-        # Handles suffixes: VBTBKR[n], CSnREC, SARUy, PmnPFS, BUSSCNT<slave>
-        m = re.search(r"§[\d.]+\s+([A-Z][A-Z0-9_/\[\]<>a-z]+)\s*[:/]", deepest)
-        if m:
-            reg_name = m.group(1).split("/")[0].strip()
-
-        # Peripheral: top-level chapter title — most stable signal across any UM.
-        # e.g. "§19. I/O Ports" → "I/O Ports", "§8. Clock Generation Circuit" → "Clock Generation Circuit"
-        if len(parts) >= 1:
-            top = parts[0].strip()
-            pm = re.search(r"§[\d.]+\s+(.+)", top)
-            if pm:
-                peripheral = pm.group(1).strip()
-
-    if reg_name:
-        return reg_name, peripheral
-
-    # Fall back to scanning text blocks for "REGNAME : ... Register"
-    for block in page_blocks:
-        text = block.get("text", "")
-        m = _RE_REG_NAME_HEADING.search(text)
-        if m:
-            return m.group(1), peripheral
-
-    # Return peripheral even when register name is not found
-    return "", peripheral
-
+# ---------------------------------------------------------------------------
+# Figure zone helpers (unchanged logic from original parser_tables.py)
+# ---------------------------------------------------------------------------
 
 def _build_figure_zones(figures_jsonl: Path) -> dict[int, list[tuple[float, float]]]:
-    """Return page -> list of (crop_y0, crop_y1) figure regions.
-
-    Uses the precise crop coordinates saved by parser_figures so we can
-    detect exact overlap between a pdfplumber table bbox and a figure region.
-    Falls back to (caption_y - page_height*0.45, caption_y1) when crop coords
-    are not available (old figures.jsonl without these fields).
-    """
     zones: dict[int, list[tuple[float, float]]] = {}
     if not figures_jsonl.exists():
         return zones
@@ -182,7 +127,6 @@ def _build_figure_zones(figures_jsonl: Path) -> dict[int, list[tuple[float, floa
             if crop_y0 is not None and crop_y1 is not None and crop_y1 > crop_y0:
                 zones.setdefault(page, []).append((float(crop_y0), float(crop_y1)))
             else:
-                # Fallback: use caption_y as bottom of figure zone
                 caption_y = fig.get("caption_y")
                 if caption_y is not None:
                     zones.setdefault(page, []).append((0.0, float(caption_y) + 20))
@@ -190,21 +134,52 @@ def _build_figure_zones(figures_jsonl: Path) -> dict[int, list[tuple[float, floa
 
 
 def _table_in_figure_zone(
-    table_bbox: tuple[float, float, float, float],
+    bbox_top_origin: tuple[float, float, float, float],
     figure_zones: list[tuple[float, float]],
 ) -> bool:
-    """Return True if the table bbox overlaps with any figure region.
-
-    pdfplumber bbox: (x0, top, x1, bottom) in PDF points (top-down).
-    Overlap means the table's vertical span intersects a figure's crop region.
-    """
-    _, top, _, bottom = table_bbox
+    """bbox_top_origin: (x0, top, x1, bottom) with y=0 at top (pdfplumber convention)."""
+    _, top, _, bottom = bbox_top_origin
     for fy0, fy1 in figure_zones:
-        # Overlap: table top < figure bottom AND table bottom > figure top
         if top < fy1 and bottom > fy0:
             return True
     return False
 
+
+# ---------------------------------------------------------------------------
+# Register name / peripheral extraction (unchanged)
+# ---------------------------------------------------------------------------
+
+def _extract_register_name(section_path: str, page_blocks: list[dict]) -> tuple[str, str]:
+    reg_name = ""
+    peripheral = "UNKNOWN"
+
+    if section_path:
+        parts = section_path.split(">")
+        deepest = parts[-1].strip() if parts else ""
+        m = re.search(r"§[\d.]+\s+([A-Z][A-Z0-9_/\[\]<>a-z]+)\s*[:/]", deepest)
+        if m:
+            reg_name = m.group(1).split("/")[0].strip()
+        if len(parts) >= 1:
+            top = parts[0].strip()
+            pm = re.search(r"§[\d.]+\s+(.+)", top)
+            if pm:
+                peripheral = pm.group(1).strip()
+
+    if reg_name:
+        return reg_name, peripheral
+
+    for block in page_blocks:
+        text = block.get("text", "")
+        m = _RE_REG_NAME_HEADING.search(text)
+        if m:
+            return m.group(1), peripheral
+
+    return "", peripheral
+
+
+# ---------------------------------------------------------------------------
+# Main parse function
+# ---------------------------------------------------------------------------
 
 def parse_tables(
     pdf_path: str | Path,
@@ -212,7 +187,7 @@ def parse_tables(
     pages_jsonl: Path | None = None,
     figures_jsonl: Path | None = None,
 ) -> int:
-    """Detect tables and write JSONL to *output_path*.
+    """Extract tables with camelot (lattice) and write JSONL to output_path.
 
     Returns number of tables written.
     """
@@ -220,10 +195,9 @@ def parse_tables(
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Build figure zone index to exclude table detections inside figures
     figure_zones = _build_figure_zones(Path(figures_jsonl)) if figures_jsonl else {}
 
-    # Build page → blocks index if pages_jsonl provided
+    # Page → text blocks index (for register name extraction)
     page_blocks: dict[int, list[dict]] = {}
     if pages_jsonl and Path(pages_jsonl).exists():
         with Path(pages_jsonl).open(encoding="utf-8") as f:
@@ -231,50 +205,69 @@ def parse_tables(
                 b = json.loads(line)
                 page_blocks.setdefault(b["page"], []).append(b)
 
+    # Pre-load page heights for bbox conversion (camelot y=0 at bottom → flip)
+    doc = fitz.open(str(pdf_path))
+    page_heights = {i + 1: doc[i].rect.height for i in range(len(doc))}
+    total_pages = len(doc)
+    doc.close()
+
     count = 0
-    with pdfplumber.open(str(pdf_path)) as pdf, output_path.open("w", encoding="utf-8") as fout:
-        total_pages = len(pdf.pages)
-        for page_num, page in enumerate(pdf.pages):
+    with output_path.open("w", encoding="utf-8") as fout:
+        for page_num in range(1, total_pages + 1):
             if page_num % 100 == 0:
-                print(f"    page {page_num + 1}/{total_pages} ({page_num * 100 // total_pages}%)  tables so far: {count}", flush=True)
-            tables = page.extract_tables(table_settings={"snap_tolerance": 3})
-            table_objects = page.find_tables(table_settings={"snap_tolerance": 3})
+                print(f"    page {page_num}/{total_pages} ({page_num * 100 // total_pages}%)  tables so far: {count}", flush=True)
+
+            try:
+                tables = camelot.read_pdf(str(pdf_path), pages=str(page_num), flavor="lattice")
+            except Exception:
+                continue
+
             if not tables:
                 continue
-            pn = page_num + 1
+
+            pn = page_num
+            page_height = page_heights[pn]
             blocks = page_blocks.get(pn, [])
             section_path = blocks[0].get("section_path", "") if blocks else ""
-            page_figure_ys = figure_zones.get(pn, [])
+            page_figure_zones = figure_zones.get(pn, [])
 
-            # When pages.jsonl has no blocks for this page (figure-heavy or table-only
-            # pages), build synthetic blocks from pdfplumber so _extract_register_name
-            # can still find the section heading above the table.
-            if not blocks:
-                raw_words = page.extract_words()
-                if raw_words:
-                    # Reconstruct a single synthetic block from all words on the page
-                    raw_text = page.extract_text() or ""
-                    if raw_text.strip():
-                        blocks = [{"text": raw_text, "bbox": [0, 0, page.width, page.height], "section_path": ""}]
+            for table_idx, table in enumerate(tables):
+                df = table.df
+                if df.empty:
+                    continue
 
-            for table_idx, (rows, tobj) in enumerate(zip(tables, table_objects)):
-                is_register = _is_register_table(rows)
+                # Convert camelot bbox (y=0 at bottom) → top-origin (y=0 at top)
+                cx1, cy1, cx2, cy2 = table._bbox
+                bbox = (cx1, page_height - cy2, cx2, page_height - cy1)
 
-                # Skip any table (register or not) that sits inside a figure zone
-                if page_figure_ys and not is_register:
-                    bbox = tobj.bbox  # (x0, top, x1, bottom) in pdfplumber coords
-                    if _table_in_figure_zone(bbox, page_figure_ys):
+                # Detect header rows and build clean column labels
+                header_end = _detect_header_end(df)
+                header = _build_header(df, header_end)
+                is_register = _is_register_header(header)
+
+                # Skip tables inside figure zones (register tables are always kept)
+                if page_figure_zones and not is_register:
+                    if _table_in_figure_zone(bbox, page_figure_zones):
                         continue
 
-                if is_register:
-                    reg_name, peripheral = _extract_register_name(section_path, blocks)
-                else:
-                    reg_name, peripheral = "", ""
+                # Extract data rows
+                data_rows = []
+                for _, row in df.iloc[header_end:].iterrows():
+                    cells = [str(c).strip() for c in row]
+                    if any(cells):
+                        d = dict(zip(header, cells))
+                        # Normalise "Function" column → also store as "Description"
+                        if "Function" in d and "Description" not in d:
+                            d["Description"] = d["Function"]
+                        data_rows.append(d)
 
-                header, data_rows = _rows_to_dicts(rows)
-                _, table_title = _find_header_and_title(rows)
+                # Extract table title from first row if it looks like "Table X.Y ..."
+                table_title = ""
+                first_cell = str(df.iloc[0, 0]).strip()
+                if _RE_TABLE_TITLE.match(first_cell):
+                    table_title = first_cell
 
-                # Additional junk filters for non-register tables
+                # Junk filters for non-register tables
                 if not is_register:
                     if not data_rows and not table_title:
                         continue
@@ -282,6 +275,11 @@ def parse_tables(
                         continue
                     if len(data_rows) < 2 and not table_title:
                         continue
+
+                if is_register:
+                    reg_name, peripheral = _extract_register_name(section_path, blocks)
+                else:
+                    reg_name, peripheral = "", ""
 
                 record = {
                     "page": pn,
@@ -308,30 +306,28 @@ if __name__ == "__main__":
     pdf_path = Path(doc_info["path"])
     output_path = Path("data/parsed/tables.jsonl")
 
-    print(f"Scanning {pdf_path} for register tables ...")
+    print(f"Scanning {pdf_path} for tables (camelot lattice) ...")
     n = parse_tables(
         pdf_path,
         output_path,
         pages_jsonl=Path("data/parsed/pages.jsonl"),
         figures_jsonl=Path("data/parsed/figures.jsonl"),
     )
-    print(f"Found {n} register tables → {output_path}")
+    print(f"Found {n} tables -> {output_path}")
 
     # Checkpoint: spot-check known registers
     known = {"sckcr", "ielsr", "pcntr1"}
     found_known: dict[str, list[int]] = {k: [] for k in known}
-
     with output_path.open(encoding="utf-8") as f:
         for line in f:
             t = json.loads(line)
             header_str = " ".join(t.get("header", [])).lower()
-            # Also check surrounding text isn't available — check row content
             rows_text = json.dumps(t.get("rows", [])).lower()
             for kw in known:
                 if kw in header_str or kw in rows_text:
                     found_known[kw].append(t["page"])
 
-    print(f"\nCheckpoint: {n} register tables (target >= 50)")
+    print(f"\nCheckpoint: {n} tables")
     for kw, pages in found_known.items():
         status = "FOUND" if pages else "NOT FOUND"
         print(f"  {kw.upper()}: {status} on pages {pages[:5]}")

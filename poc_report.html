@@ -3,871 +3,876 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Hardware UM AI Assistant — POC</title>
+<title>Hardware UM AI Assistant — POC Overview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --blue:    #2563eb;
-    --blue-lt: #eff6ff;
-    --green:   #16a34a;
-    --green-lt:#f0fdf4;
-    --purple:  #7c3aed;
-    --purple-lt:#f5f3ff;
-    --orange:  #ea580c;
-    --orange-lt:#fff7ed;
-    --red:     #dc2626;
-    --red-lt:  #fef2f2;
-    --gray:    #64748b;
-    --gray-lt: #f8fafc;
-    --border:  #e2e8f0;
-    --text:    #0f172a;
-    --text-sm: #475569;
+    --bg:        #FAF9F5;
+    --bg-2:      #F0EEE6;
+    --panel:     #FFFFFF;
+    --clay:      #C96442;
+    --clay-dark: #A6492C;
+    --clay-soft: #F3E7DF;
+    --clay-bd:   #E6CDBF;
+    --ink:       #1F1E1D;
+    --ink-2:     #3D3C39;
+    --muted:     #73726C;
+    --border:    #E7E4DA;
+    --border-2:  #DAD7CC;
+    --ok:        #4F7A45; --ok-bg: #E9F0E3;
+    --warn:      #A9772A; --warn-bg: #F6EDD7;
+    --plan:      #82817A; --plan-bg: #ECEBE3;
+    --blue:      #2E6DA4; --blue-bg: #E4EDF6; --blue-bd: #B8CEEA;
+    --purple:    #6B4FA0; --purple-bg: #EEE8F8; --purple-bd: #C9BAEC;
+    --serif: 'Source Serif 4', Georgia, serif;
+    --sans:  'Inter', system-ui, sans-serif;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f1f5f9; color: var(--text); line-height: 1.6; }
+  body { font-family: var(--sans); background: var(--bg); color: var(--ink); line-height: 1.6; -webkit-font-smoothing: antialiased; }
 
-  /* HERO */
-  .hero {
-    background: linear-gradient(135deg, #1e3a5f 0%, #1d4ed8 55%, #6d28d9 100%);
-    color: white; padding: 60px 48px 52px; position: relative; overflow: hidden;
+  /* ── HERO ── */
+  .hero { background: linear-gradient(160deg, #F0EEE6 0%, #FAF9F5 62%); border-bottom: 1px solid var(--border); padding: 44px 48px 36px; }
+  .hero-eyebrow { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--clay); background: var(--clay-soft); border: 1px solid var(--clay-bd); border-radius: 20px; padding: 4px 13px; margin-bottom: 14px; }
+  .hero h1 { font-family: var(--serif); font-size: 38px; font-weight: 600; line-height: 1.12; color: var(--ink); margin-bottom: 10px; }
+  .hero h1 em { font-style: italic; color: var(--clay); }
+  .hero .subtitle { font-size: 14px; color: var(--muted); max-width: 600px; }
+
+  .container { max-width: 1060px; margin: 0 auto; padding: 36px 24px 56px; display: flex; flex-direction: column; gap: 40px; }
+
+  .sec-label { font-size: 10.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--clay); margin-bottom: 14px; }
+
+  .st { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
+  .st.ok   { background: var(--ok-bg);   color: var(--ok); }
+  .st.warn { background: var(--warn-bg); color: var(--warn); }
+  .st.plan { background: var(--plan-bg); color: var(--plan); }
+
+  code { font-family: 'Consolas','SF Mono',monospace; background: var(--bg-2); border: 1px solid var(--border); padding: 1px 5px; border-radius: 4px; font-size: .87em; color: var(--clay-dark); }
+
+  .badge { display: inline-block; font-size: 9.5px; font-weight: 700; padding: 1px 7px; border-radius: 20px; margin-left: 4px; white-space: nowrap; }
+  .badge.c  { background: var(--ok-bg);     color: var(--ok); }
+  .badge.a  { background: var(--plan-bg);   color: var(--plan); }
+  .badge.cl { background: var(--blue-bg);   color: var(--blue); }
+
+  .cmp { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .cmp th { text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: 0 10px 7px; border-bottom: 1px solid var(--border-2); }
+  .cmp td { padding: 8px 10px; border-bottom: 1px solid var(--border); color: var(--ink-2); vertical-align: top; line-height: 1.4; }
+  .cmp tr:last-child td { border-bottom: none; }
+  .cmp .cur td:first-child { font-weight: 600; color: var(--ink); }
+
+  /* ════════════════════════════════════════
+     DIAGRAM 1 — HUB AND SPOKE
+  ════════════════════════════════════════ */
+  .hub-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 28px 24px 20px; }
+  .spoke-row { display: flex; align-items: center; justify-content: center; gap: 0; }
+
+  .snode { flex-shrink: 0; width: 200px; background: var(--bg-2); border: 2px solid var(--border-2); border-radius: 14px; padding: 18px 16px; cursor: pointer; transition: border-color .18s, box-shadow .18s; user-select: none; }
+  .snode:hover { border-color: var(--clay-bd); box-shadow: 0 2px 12px rgba(201,100,66,.12); }
+  .snode.active { border-color: var(--clay); box-shadow: 0 0 0 3px var(--clay-soft); }
+  .snode.center { width: 220px; background: linear-gradient(135deg, var(--clay-soft) 0%, #fff 100%); border-color: var(--clay-bd); }
+  .snode.center.active { border-color: var(--clay); }
+  .snode-ico { width: 36px; height: 36px; margin-bottom: 10px; }
+  .snode-ico svg { width: 36px; height: 36px; }
+  .snode-title { font-family: var(--serif); font-size: 15px; font-weight: 600; color: var(--ink); margin-bottom: 6px; }
+  .snode-tags { display: flex; flex-direction: column; gap: 3px; }
+  .tag { font-size: 11px; color: var(--muted); padding-left: 12px; position: relative; }
+  .tag::before { content: '·'; position: absolute; left: 2px; color: var(--clay); }
+
+  .connector { display: flex; align-items: center; flex: 1; max-width: 80px; }
+  .conn-line { flex: 1; height: 2px; background: var(--border-2); }
+  .conn-arrow { font-size: 14px; color: var(--clay); line-height: 1; flex-shrink: 0; }
+
+  .hub-panels { margin-top: 20px; }
+  .hub-panel { display: none; background: var(--bg-2); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; }
+  .hub-panel.open { display: block; }
+  .hub-panel-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .hub-panel-title { font-family: var(--serif); font-size: 15px; font-weight: 600; color: var(--ink); }
+  .hub-panel-desc { font-size: 13px; color: var(--ink-2); line-height: 1.55; margin-bottom: 14px; }
+  .kw-row { display: flex; flex-wrap: wrap; gap: 7px; }
+  .kw { display: inline-block; font-size: 11.5px; font-weight: 600; background: var(--panel); border: 1px solid var(--border); border-radius: 20px; padding: 3px 11px; color: var(--ink-2); }
+  .kw.hi { background: var(--clay-soft); border-color: var(--clay-bd); color: var(--clay-dark); }
+
+  .tool-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px; }
+  .tool-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px 13px; }
+  .tool-card-ico { width: 24px; height: 24px; margin-bottom: 7px; }
+  .tool-card-ico svg { width: 24px; height: 24px; }
+  .tool-card-name { font-family: var(--serif); font-size: 13px; font-weight: 600; color: var(--clay-dark); margin-bottom: 4px; }
+  .tool-card-desc { font-size: 11.5px; color: var(--muted); line-height: 1.45; }
+
+  /* ════════════════════════════════════════
+     DIAGRAM 2 — VISUAL PIPELINE
+  ════════════════════════════════════════ */
+  .pipeline-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+  .pipeline-layout { display: grid; grid-template-columns: 1fr 320px; min-height: 500px; }
+
+  /* LEFT: visual flow */
+  .pipe-flow { padding: 28px 24px; border-right: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; gap: 0; }
+
+  /* PDF source node */
+  .pf-source { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .pf-node { display: flex; flex-direction: column; align-items: center; gap: 6px; background: var(--bg-2); border: 2px solid var(--border-2); border-radius: 12px; padding: 14px 18px; cursor: pointer; transition: border-color .18s, box-shadow .18s; user-select: none; min-width: 120px; text-align: center; }
+  .pf-node:hover { border-color: var(--clay-bd); box-shadow: 0 2px 10px rgba(201,100,66,.1); }
+  .pf-node.active { border-color: var(--clay); box-shadow: 0 0 0 3px var(--clay-soft); }
+  .pf-node svg { width: 28px; height: 28px; }
+  .pf-node-label { font-size: 12px; font-weight: 600; color: var(--ink); line-height: 1.3; }
+  .pf-node-sub { font-size: 10.5px; color: var(--muted); }
+
+  /* arrow down from source */
+  .pf-arrow-down { display: flex; flex-direction: column; align-items: center; gap: 0; margin: 2px 0; }
+  .pf-arrow-down .vline { width: 2px; height: 18px; background: var(--border-2); }
+  .pf-arrow-down .tip { width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 7px solid var(--border-2); }
+
+  /* parallel extract row */
+  .pf-parallel { display: flex; align-items: flex-start; gap: 0; width: 100%; justify-content: center; margin: 4px 0; }
+  .pf-parallel-inner { display: flex; gap: 12px; }
+
+  /* fan-out lines above parallel nodes */
+  .pf-fanout { position: relative; width: 100%; height: 28px; margin-bottom: 0; }
+  .pf-fanout svg { width: 100%; height: 28px; overflow: visible; }
+
+  /* label row for parallel section */
+  .pf-section-label { font-size: 9.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; align-self: flex-start; padding-left: 2px; }
+
+  /* converge + chunk + embed row */
+  .pf-converge { display: flex; flex-direction: column; align-items: center; gap: 0; width: 100%; margin-top: 4px; }
+
+  /* database row */
+  .pf-db-row { display: flex; gap: 16px; justify-content: center; margin-top: 4px; }
+  .pf-db-node { display: flex; flex-direction: column; align-items: center; gap: 6px; border: 2px solid var(--border-2); border-radius: 12px; padding: 14px 18px; cursor: pointer; transition: border-color .18s, box-shadow .18s; user-select: none; min-width: 130px; text-align: center; }
+  .pf-db-node:hover { border-color: var(--clay-bd); box-shadow: 0 2px 10px rgba(201,100,66,.1); }
+  .pf-db-node.active { border-color: var(--clay); box-shadow: 0 0 0 3px var(--clay-soft); }
+  .pf-db-node svg { width: 32px; height: 32px; }
+  .pf-db-node-label { font-size: 12px; font-weight: 600; color: var(--ink); line-height: 1.3; }
+  .pf-db-node-sub { font-size: 10.5px; color: var(--muted); }
+  .pf-db-chroma { background: linear-gradient(135deg, var(--blue-bg), #fff); border-color: var(--blue-bd); }
+  .pf-db-chroma.active { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-bg); }
+  .pf-db-sqlite { background: linear-gradient(135deg, #EDF5EC, #fff); border-color: #AACFA8; }
+  .pf-db-sqlite.active { border-color: var(--ok); box-shadow: 0 0 0 3px var(--ok-bg); }
+
+  /* RIGHT: detail panel */
+  .pipe-detail { padding: 24px 22px; background: var(--bg); overflow-y: auto; }
+  .pipe-detail-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 10px; color: var(--muted); font-size: 13px; text-align: center; padding: 40px 20px; }
+  .pipe-detail-empty svg { width: 40px; height: 40px; opacity: .3; }
+  .pipe-pane { display: none; }
+  .pipe-pane.active { display: block; }
+  .pipe-detail-title { font-family: var(--serif); font-size: 17px; font-weight: 600; color: var(--ink); margin-bottom: 6px; }
+  .pipe-detail-desc { font-size: 13px; color: var(--ink-2); line-height: 1.6; margin-bottom: 14px; }
+  .pipe-detail-head { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 8px; }
+
+  /* ── DEMO STATS ── */
+  .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .stat-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; display: flex; gap: 14px; align-items: flex-start; }
+  .stat-ico { flex-shrink: 0; width: 36px; height: 36px; border-radius: 10px; background: var(--clay-soft); display: flex; align-items: center; justify-content: center; }
+  .stat-ico svg { width: 20px; height: 20px; }
+  .stat-kv { font-family: var(--serif); font-size: 24px; font-weight: 600; color: var(--clay-dark); line-height: 1.1; }
+  .stat-kl { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+
+  /* ── FOOTER ── */
+  .footer { text-align: center; padding: 22px 20px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--border); background: var(--bg-2); }
+
+  @media (max-width: 760px) {
+    .hero { padding: 32px 20px 26px; }
+    .hero h1 { font-size: 28px; }
+    .spoke-row { flex-direction: column; gap: 8px; }
+    .connector { display: none; }
+    .snode, .snode.center { width: 100%; max-width: 320px; }
+    .pipeline-layout { grid-template-columns: 1fr; }
+    .pipe-flow { border-right: none; border-bottom: 1px solid var(--border); }
+    .tool-grid { grid-template-columns: 1fr; }
+    .stats-grid { grid-template-columns: 1fr 1fr; }
+    .pf-parallel-inner { gap: 8px; }
   }
-  .hero::before {
-    content: ''; position: absolute; inset: 0;
-    background: url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M0 0h80v80H0z'/%3E%3Ccircle cx='40' cy='40' r='30'/%3E%3C/g%3E%3C/svg%3E");
-  }
-  .hero-eyebrow { display: inline-flex; align-items: center; gap: 8px; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.25); border-radius: 20px; padding: 4px 14px; font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 18px; }
-  .hero h1 { font-size: 38px; font-weight: 800; line-height: 1.2; margin-bottom: 14px; }
-  .hero h1 em { font-style: normal; color: #93c5fd; }
-  .hero .subtitle { font-size: 16px; opacity: .82; max-width: 580px; line-height: 1.6; }
-  .hero-chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
-  .hero-chip { background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.2); border-radius: 8px; padding: 6px 14px; font-size: 13px; }
-  .hero-chip strong { color: #bfdbfe; }
-
-  /* LAYOUT */
-  .container { max-width: 1080px; margin: 0 auto; padding: 44px 24px; }
-  section { margin-bottom: 52px; }
-  .section-label {
-    display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
-  }
-  .section-label .sl-num { width: 26px; height: 26px; border-radius: 50%; background: var(--blue); color: white; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-  .section-label .sl-eyebrow { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--blue); }
-  section > h2 { font-size: 22px; font-weight: 800; margin-bottom: 20px; }
-
-  /* PROBLEM / SOLUTION */
-  .ps-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  @media (max-width: 680px) { .ps-grid { grid-template-columns: 1fr; } }
-  .ps-card { border-radius: 12px; padding: 24px; border: 1px solid; }
-  .ps-card.problem { background: var(--red-lt); border-color: #fca5a5; }
-  .ps-card.solution { background: var(--green-lt); border-color: #86efac; }
-  .ps-card .ps-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-  .ps-card .ps-icon { font-size: 22px; }
-  .ps-card .ps-title { font-size: 15px; font-weight: 700; }
-  .ps-card ul { padding-left: 18px; }
-  .ps-card li { font-size: 13px; color: var(--text-sm); margin-bottom: 6px; line-height: 1.5; }
-
-  /* CAPABILITY CARDS */
-  .cap-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
-  .cap-card { background: white; border-radius: 14px; border: 1px solid var(--border); overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.05); }
-  .cap-card .cap-header { padding: 18px 20px 14px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; align-items: flex-start; }
-  .cap-card .cap-icon { width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; margin-top: 2px; }
-  .cap-card .cap-title { font-size: 15px; font-weight: 700; margin-bottom: 3px; }
-  .cap-card .cap-desc { font-size: 12px; color: var(--text-sm); line-height: 1.5; }
-  .cap-card .cap-demo { padding: 14px 20px; }
-  .cap-card .demo-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--gray); margin-bottom: 6px; }
-  .cap-card .demo-q { font-size: 12px; background: var(--gray-lt); border-radius: 6px; padding: 8px 12px; font-family: 'Consolas', monospace; color: var(--text-sm); border-left: 3px solid var(--blue); margin-bottom: 8px; }
-  .cap-card .demo-a { font-size: 12px; background: #f0fdf4; border-radius: 6px; padding: 8px 12px; color: #166534; line-height: 1.55; border-left: 3px solid var(--green); }
-  .cap-card .demo-cite { font-size: 10px; color: #94a3b8; margin-top: 5px; font-family: 'Consolas', monospace; }
-
-  /* ARCHITECTURE */
-  .arch { background: white; border-radius: 14px; border: 1px solid var(--border); padding: 32px; }
-  .arch-flow { display: flex; flex-direction: column; gap: 4px; }
-  .arch-row { display: flex; align-items: stretch; gap: 4px; }
-  .arch-block { flex: 1; border-radius: 10px; padding: 14px 16px; }
-  .arch-arrow { display: flex; align-items: center; justify-content: center; font-size: 16px; color: var(--gray); padding: 0 4px; flex-shrink: 0; }
-  .arch-label { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
-  .arch-sub { font-size: 11px; color: #475569; line-height: 1.4; }
-  .arch-pills { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
-  .arch-pill { background: rgba(255,255,255,.55); border: 1px solid rgba(0,0,0,.09); border-radius: 12px; padding: 2px 9px; font-size: 11px; font-weight: 500; }
-  .a-blue   { background: #dbeafe; }
-  .a-purple { background: #ede9fe; }
-  .a-green  { background: #dcfce7; }
-  .a-orange { background: #ffedd5; }
-  .a-gray   { background: #f1f5f9; border: 1px solid var(--border); }
-  .arch-divider { text-align: center; font-size: 11px; color: var(--gray); padding: 4px 0; letter-spacing: .03em; }
-
-  /* DEPLOYMENT OPTIONS */
-  .deploy-table { width: 100%; border-collapse: collapse; background: white; border-radius: 14px; overflow: hidden; border: 1px solid var(--border); }
-  .deploy-table thead tr { background: #1e293b; color: white; }
-  .deploy-table th { padding: 13px 16px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; text-align: left; }
-  .deploy-table td { padding: 14px 16px; font-size: 13px; border-bottom: 1px solid var(--border); vertical-align: top; line-height: 1.5; }
-  .deploy-table tr:last-child td { border-bottom: none; }
-  .deploy-table tr:hover td { background: var(--gray-lt); }
-  .deploy-table .opt-name { font-weight: 700; font-size: 14px; margin-bottom: 3px; }
-  .deploy-table .opt-sub  { font-size: 11px; color: var(--text-sm); }
-  .pro-item { display: flex; align-items: flex-start; gap: 5px; margin-bottom: 4px; font-size: 12px; color: #166534; }
-  .pro-item::before { content: '✓'; flex-shrink: 0; font-weight: 700; color: var(--green); }
-  .con-item { display: flex; align-items: flex-start; gap: 5px; margin-bottom: 4px; font-size: 12px; color: #991b1b; }
-  .con-item::before { content: '✗'; flex-shrink: 0; font-weight: 700; color: var(--red); }
-  .cost-pill { display: inline-block; border-radius: 20px; padding: 3px 10px; font-size: 11px; font-weight: 700; }
-  .cost-low    { background: #dcfce7; color: #166534; }
-  .cost-med    { background: #fef9c3; color: #854d0e; }
-  .cost-high   { background: #fee2e2; color: #991b1b; }
-  .fit-pill    { display: inline-block; border-radius: 20px; padding: 3px 10px; font-size: 11px; font-weight: 600; }
-  .fit-poc     { background: var(--blue-lt); color: var(--blue); }
-  .fit-team    { background: var(--purple-lt); color: var(--purple); }
-  .fit-ent     { background: #fef9c3; color: #92400e; }
-  .fit-cloud   { background: #f0fdf4; color: #166534; }
-  .radar-wrap  { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-top: 20px; }
-  .radar-card  { background: white; border-radius: 12px; border: 1px solid var(--border); padding: 20px; }
-  .radar-card .rc-name  { font-size: 14px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
-  .radar-card .rc-row   { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
-  .radar-card .rc-label { font-size: 11px; color: var(--text-sm); width: 80px; flex-shrink: 0; }
-  .rc-bar-bg  { flex: 1; height: 7px; background: var(--border); border-radius: 4px; overflow: hidden; }
-  .rc-bar     { height: 100%; border-radius: 4px; }
-  .rc-val     { font-size: 11px; font-weight: 700; width: 28px; text-align: right; flex-shrink: 0; }
-
-  /* STAT ROW */
-  .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; }
-  .stat-card { background: white; border-radius: 12px; border: 1px solid var(--border); padding: 18px 20px; }
-  .stat-card .sv { font-size: 30px; font-weight: 800; line-height: 1; margin-bottom: 3px; }
-  .stat-card .sl { font-size: 12px; color: var(--text-sm); }
-  .stat-card .ss { font-size: 11px; color: #94a3b8; margin-top: 2px; }
-
-  /* HIGHLIGHT BOX */
-  .highlight { border-radius: 12px; padding: 20px 24px; border: 1px solid; display: flex; gap: 14px; margin-bottom: 14px; }
-  .hl-blue   { background: var(--blue-lt);   border-color: #93c5fd; }
-  .hl-green  { background: var(--green-lt);  border-color: #86efac; }
-  .hl-purple { background: var(--purple-lt); border-color: #c4b5fd; }
-  .hl-orange { background: var(--orange-lt); border-color: #fdba74; }
-  .hl-icon  { font-size: 22px; flex-shrink: 0; line-height: 1.2; }
-  .hl-title { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
-  .hl-text  { font-size: 13px; color: var(--text-sm); line-height: 1.55; }
-
-  /* PIPELINE MINI */
-  .pipe { display: flex; align-items: center; gap: 0; overflow-x: auto; padding-bottom: 4px; }
-  .pipe-step { flex: 1; min-width: 110px; display: flex; flex-direction: column; align-items: center; text-align: center; padding: 16px 8px; }
-  .pipe-step .pi { width: 44px; height: 44px; border-radius: 11px; display: flex; align-items: center; justify-content: center; font-size: 20px; margin-bottom: 8px; }
-  .pipe-step .pt { font-size: 12px; font-weight: 700; margin-bottom: 2px; }
-  .pipe-step .pd { font-size: 11px; color: var(--text-sm); }
-  .pipe-step .po { margin-top: 6px; background: var(--gray-lt); border: 1px solid var(--border); border-radius: 5px; padding: 3px 8px; font-size: 10px; font-family: 'Consolas', monospace; color: var(--gray); }
-  .pipe-arrow { color: var(--gray); font-size: 18px; flex-shrink: 0; padding: 0 4px; }
-
-  /* FOOTER */
-  .footer { background: white; border-top: 1px solid var(--border); text-align: center; padding: 28px; font-size: 12px; color: var(--text-sm); }
-  code { font-family: 'Consolas', monospace; background: #f1f5f9; padding: 1px 5px; border-radius: 4px; font-size: .9em; }
 </style>
 </head>
 <body>
 
-<!-- HERO -->
+<!-- ═══ HERO ═══ -->
 <div class="hero">
-  <div class="hero-eyebrow">⚙️ Proof of Concept &nbsp;·&nbsp; Renesas RA6M4</div>
-  <h1>Technical Documentation <em>AI Assistant</em></h1>
-  <p class="subtitle">
-    An AI agent that can answer engineering questions, verify configuration constraints,
-    and detect potential errors — grounded directly in your technical documentation.
-  </p>
-  <div class="hero-chips">
-    <div class="hero-chip">Example doc: <strong>RA6M4 Hardware UM · Rev.1.60</strong></div>
-    <div class="hero-chip">Pages: <strong>1,907</strong></div>
-    <div class="hero-chip">Indexed chunks: <strong>15,590</strong></div>
-    <div class="hero-chip">Ingestion time: <strong>~26 min (CPU-only)</strong></div>
-  </div>
+  <div class="hero-eyebrow">Proof of Concept</div>
+  <h1>Hardware UM <em>AI Assistant</em></h1>
+  <p class="subtitle">An AI that reads a 1,907-page hardware manual and answers questions with exact page citations.</p>
 </div>
 
 <div class="container">
 
-  <!-- PROBLEM / SOLUTION -->
-  <section>
-    <div class="section-label"><div class="sl-eyebrow">Why this matters</div></div>
-    <h2>The Problem We're Solving</h2>
-    <div class="ps-grid">
-      <div class="ps-card problem">
-        <div class="ps-head"><div class="ps-icon">😓</div><div class="ps-title">Today — Manual document navigation</div></div>
-        <ul>
-          <li>Engineers search hundreds or thousands of PDF pages to find constraints and settings</li>
-          <li>Constraint violations (e.g. wrong clock ratio, prohibited bit combination) are caught late — at integration or test</li>
-          <li>Specifications, timing tables, and usage notes are scattered across chapters</li>
-          <li>Reviewing a configuration against the documentation takes hours per peripheral</li>
-        </ul>
-      </div>
-      <div class="ps-card solution">
-        <div class="ps-head"><div class="ps-icon">🤖</div><div class="ps-title">With AI Assistant</div></div>
-        <ul>
-          <li>Ask in natural language — get an answer with the exact document section and page cited</li>
-          <li>Constraint checks run instantly: "Is this clock ratio valid?" → Yes/No + source reference</li>
-          <li>Structured fields are queryable — no manual cross-referencing</li>
-          <li>Configuration errors are surfaced before hardware integration</li>
-        </ul>
-      </div>
-    </div>
-  </section>
+  <!-- ════════════════════════════════════════════════════
+       DIAGRAM 1 — HUB AND SPOKE
+  ════════════════════════════════════════════════════ -->
+  <div>
+    <div class="sec-label">System architecture</div>
+    <div class="hub-wrap">
+      <div class="spoke-row">
 
-  <!-- CORE CAPABILITY -->
-  <section>
-    <div class="section-label"><div class="sl-eyebrow">Core capability</div></div>
-    <h2>What the Agent Can Do</h2>
-    <div class="cap-grid">
-
-      <!-- CONSTRAINT CHECK -->
-      <div class="cap-card">
-        <div class="cap-header">
-          <div class="cap-icon a-blue">📐</div>
-          <div>
-            <div class="cap-title">Constraint Verification</div>
-            <div class="cap-desc">Check whether a clock, voltage, or peripheral setting violates UM-defined constraints</div>
+        <!-- Agent -->
+        <div class="snode" id="sn-agent" onclick="toggleSpoke('agent')">
+          <div class="snode-ico">
+            <!-- brain / LLM icon -->
+            <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect width="36" height="36" rx="8" fill="#F3E7DF"/>
+              <path d="M18 8C13.03 8 9 12.03 9 17c0 2.39.87 4.57 2.3 6.24C12.06 24.3 12.5 25.4 12.5 26.5V28h11v-1.5c0-1.1.44-2.2 1.2-3.26C26.13 21.57 27 19.39 27 17c0-4.97-4.03-9-9-9z" stroke="#A6492C" stroke-width="1.6" stroke-linejoin="round"/>
+              <path d="M14 22h8M15.5 19c0-1.38 1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5" stroke="#A6492C" stroke-width="1.6" stroke-linecap="round"/>
+              <circle cx="15" cy="15" r="1.2" fill="#A6492C"/>
+              <circle cx="21" cy="15" r="1.2" fill="#A6492C"/>
+            </svg>
           </div>
-        </div>
-        <div class="cap-demo">
-          <div class="demo-label">Live demo</div>
-          <div class="demo-q">Q: What are the clock frequency ratio constraints?</div>
-          <div class="demo-a">
-            ICLK must be ≥ FCLK and ICLK ≥ BCLK.<br>
-            All ratios must be N:1 (N integer, up to 64).<br>
-            <strong>If ADC is enabled:</strong> PCLKA:PCLKC must be 1:1, 2:1, 4:1, 8:1, 1:2, or 1:4.
-          </div>
-          <div class="demo-cite">【§8. Clock Generation Circuit &gt; §8.1 Overview | p.141】</div>
-        </div>
-      </div>
-
-      <!-- CONFIG ERROR DETECTION -->
-      <div class="cap-card">
-        <div class="cap-header">
-          <div class="cap-icon a-orange">⚠️</div>
-          <div>
-            <div class="cap-title">Configuration Error Detection</div>
-            <div class="cap-desc">Surface prohibited combinations and "setting prohibited" bit values before they reach hardware</div>
-          </div>
-        </div>
-        <div class="cap-demo">
-          <div class="demo-label">Live demo — register_lookup("SCKSCR")</div>
-          <div class="demo-q">Q: What are the valid clock source values for SCKSCR.CKSEL?</div>
-          <div class="demo-a">
-            000: HOCO &nbsp;|&nbsp; 001: MOCO &nbsp;|&nbsp; 010: LOCO<br>
-            011: Main oscillator &nbsp;|&nbsp; 100: Sub-clock &nbsp;|&nbsp; 101: PLL<br>
-            <strong>110, 111: Setting prohibited ⛔</strong>
-          </div>
-          <div class="demo-cite">【§8. Clock Generation Circuit &gt; §8.2.3 SCKSCR | p.149】</div>
-        </div>
-      </div>
-
-      <!-- PIN MUX CONFLICT -->
-      <div class="cap-card">
-        <div class="cap-header">
-          <div class="cap-icon a-purple">🔀</div>
-          <div>
-            <div class="cap-title">Pin Multiplexing Rules</div>
-            <div class="cap-desc">Identify pin assignment conflicts and peripheral suffix matching requirements</div>
-          </div>
-        </div>
-        <div class="cap-demo">
-          <div class="demo-label">Live demo</div>
-          <div class="demo-q">Q: Are there constraints on assigning multiple pins to the same function?</div>
-          <div class="demo-a">
-            When assigning IIC, SPI, SSIE, ETHERC, or SDHI — select pins with the <strong>same suffix</strong> (_A, _B, _C).<br>
-            <strong>Assigning the same function to two or more pins simultaneously is prohibited.</strong>
-          </div>
-          <div class="demo-cite">【§19. I/O Ports &gt; §19.6 Peripheral Select Settings | p.516】</div>
-        </div>
-      </div>
-
-      <!-- REGISTER LOOKUP -->
-      <div class="cap-card">
-        <div class="cap-header">
-          <div class="cap-icon a-green">🔬</div>
-          <div>
-            <div class="cap-title">Exact Register Lookup</div>
-            <div class="cap-desc">Deterministic lookup of any register — address, reset value, all bit fields, R/W access</div>
-          </div>
-        </div>
-        <div class="cap-demo">
-          <div class="demo-label">Live demo — register_lookup("SCKSCR")</div>
-          <div class="demo-q">Q: What does FCK[2:0] in SCKSCR control?</div>
-          <div class="demo-a">
-            <strong>FCLK divider</strong> (bits 30:28):<br>
-            000=÷1 &nbsp;001=÷2 &nbsp;010=÷4 &nbsp;011=÷8<br>
-            100=÷16 &nbsp;101=÷32 &nbsp;110=÷64 &nbsp;<strong>Others: prohibited ⛔</strong>
-          </div>
-          <div class="demo-cite">【§8. Clock Generation Circuit &gt; §8.2.3 SCKSCR | p.149】</div>
-        </div>
-      </div>
-
-      <!-- ADC TRIGGER RULES -->
-      <div class="cap-card">
-        <div class="cap-header">
-          <div class="cap-icon a-orange">⚡</div>
-          <div>
-            <div class="cap-title">Peripheral Interaction Rules</div>
-            <div class="cap-desc">Cross-peripheral constraints — trigger modes, DMA dependencies, combined operation rules</div>
-          </div>
-        </div>
-        <div class="cap-demo">
-          <div class="demo-label">Live demo</div>
-          <div class="demo-q">Q: What trigger must be used in ADC double-trigger mode?</div>
-          <div class="demo-a">
-            Must use a <strong>synchronous trigger (ELC)</strong>.<br>
-            Set ADCSR.EXTRG = 0 and ADCSR.TRGE = 1.<br>
-            <strong>Do not use a software trigger.</strong><br>
-            Channel selection via ADANSA0/ADANSA1 is invalid in this mode.
-          </div>
-          <div class="demo-cite">【§40. ADC12 &gt; §40.3.2.4 Double-trigger Mode | p.1596】</div>
-        </div>
-      </div>
-
-      <!-- VOLTAGE / TIMING -->
-      <div class="cap-card">
-        <div class="cap-header">
-          <div class="cap-icon a-blue">🔋</div>
-          <div>
-            <div class="cap-title">Electrical Characteristics</div>
-            <div class="cap-desc">Voltage limits, ripple tolerances, and timing parameters from the electrical specs chapter</div>
-          </div>
-        </div>
-        <div class="cap-demo">
-          <div class="demo-label">Live demo</div>
-          <div class="demo-q">Q: What is the VCC ripple frequency limit?</div>
-          <div class="demo-a">
-            Max ripple frequency <strong>fr(VCC) = 10 kHz</strong> (standard).<br>
-            Up to 1 MHz if Vr ≤ VCC×0.08, up to 10 MHz if Vr ≤ VCC×0.06.<br>
-            VCC range: 2.7 V (min) — 3.6 V (max).
-          </div>
-          <div class="demo-cite">【§50. Electrical Characteristics &gt; §50.2.7 | p.1820】</div>
-        </div>
-      </div>
-
-    </div>
-  </section>
-
-  <!-- HOW IT WORKS -->
-  <section>
-    <div class="section-label"><div class="sl-eyebrow">How it works</div></div>
-    <h2>System Architecture</h2>
-
-    <div class="arch">
-      <div class="arch-flow">
-
-        <div class="arch-row">
-          <div class="arch-block a-blue">
-            <div class="arch-label">🤖 AI Agent (Claude)</div>
-            <div class="arch-sub">Receives engineer's question, decides which tool to call, synthesizes the answer with document citations</div>
+          <div class="snode-title">Agent</div>
+          <div class="snode-tags">
+            <span class="tag">Claude / any LLM</span>
+            <span class="tag">calls tools</span>
+            <span class="tag">no changes needed</span>
           </div>
         </div>
 
-        <div class="arch-divider">↕ &nbsp;MCP — Model Context Protocol (stdio)</div>
+        <div class="connector">
+          <div class="conn-line"></div>
+          <div class="conn-arrow">&#8644;</div>
+          <div class="conn-line"></div>
+        </div>
 
-        <div class="arch-row">
-          <div class="arch-block a-purple" style="flex:1; margin-right:4px">
-            <div class="arch-label">🔍 search_um</div>
-            <div class="arch-sub">Natural-language semantic search across all content types</div>
+        <!-- MCP -->
+        <div class="snode center" id="sn-mcp" onclick="toggleSpoke('mcp')">
+          <div class="snode-ico">
+            <!-- plug / connector icon -->
+            <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect width="36" height="36" rx="8" fill="#F3E7DF"/>
+              <rect x="14" y="8" width="8" height="5" rx="1.5" stroke="#A6492C" stroke-width="1.6"/>
+              <path d="M18 13v3M12 16h12v6a6 6 0 01-12 0v-6z" stroke="#A6492C" stroke-width="1.6" stroke-linejoin="round"/>
+              <path d="M18 28v1" stroke="#A6492C" stroke-width="1.6" stroke-linecap="round"/>
+              <circle cx="15.5" cy="14" r="1" fill="#A6492C"/>
+              <circle cx="20.5" cy="14" r="1" fill="#A6492C"/>
+            </svg>
           </div>
-          <div class="arch-block a-purple" style="flex:1; margin-right:4px">
-            <div class="arch-label">⚙️ register_lookup</div>
-            <div class="arch-sub">Exact lookup by register name — structured bit fields</div>
-          </div>
-          <div class="arch-block a-purple" style="flex:1">
-            <div class="arch-label">🖼️ get_figure</div>
-            <div class="arch-sub">Retrieve diagram by figure ID</div>
+          <div class="snode-title">MCP Server</div>
+          <div class="snode-tags">
+            <span class="tag">FastMCP · Python</span>
+            <span class="tag">3 tools exposed</span>
+            <span class="tag">open standard</span>
           </div>
         </div>
 
-        <div class="arch-divider">↕ &nbsp;Python retrieval layer</div>
+        <div class="connector">
+          <div class="conn-line"></div>
+          <div class="conn-arrow">&#8644;</div>
+          <div class="conn-line"></div>
+        </div>
 
-        <div class="arch-row">
-          <div class="arch-block a-green" style="flex:2; margin-right:4px">
-            <div class="arch-label">ChromaDB — Vector Store</div>
-            <div class="arch-sub">15,590 semantic chunks: prose · register rows · figures · tables</div>
-            <div class="arch-pills">
-              <span class="arch-pill">sentence-transformers (local)</span>
-              <span class="arch-pill">all-MiniLM-L6-v2</span>
+        <!-- Database -->
+        <div class="snode" id="sn-db" onclick="toggleSpoke('db')">
+          <div class="snode-ico">
+            <!-- stacked cylinders icon -->
+            <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect width="36" height="36" rx="8" fill="#F3E7DF"/>
+              <ellipse cx="18" cy="11" rx="8" ry="3" stroke="#A6492C" stroke-width="1.6"/>
+              <path d="M10 11v5c0 1.66 3.58 3 8 3s8-1.34 8-3v-5" stroke="#A6492C" stroke-width="1.6"/>
+              <path d="M10 16v5c0 1.66 3.58 3 8 3s8-1.34 8-3v-5" stroke="#A6492C" stroke-width="1.6"/>
+            </svg>
+          </div>
+          <div class="snode-title">Database</div>
+          <div class="snode-tags">
+            <span class="tag">ChromaDB (vectors)</span>
+            <span class="tag">SQLite (registers)</span>
+            <span class="tag">local · private</span>
+          </div>
+        </div>
+
+      </div><!-- /spoke-row -->
+
+      <div class="hub-panels">
+
+        <!-- Agent panel -->
+        <div class="hub-panel" id="hp-agent">
+          <div class="hub-panel-head">
+            <svg width="22" height="22" viewBox="0 0 36 36" fill="none"><path d="M18 8C13.03 8 9 12.03 9 17c0 2.39.87 4.57 2.3 6.24C12.06 24.3 12.5 25.4 12.5 26.5V28h11v-1.5c0-1.1.44-2.2 1.2-3.26C26.13 21.57 27 19.39 27 17c0-4.97-4.03-9-9-9z" stroke="#A6492C" stroke-width="1.8" stroke-linejoin="round"/><path d="M14 22h8M15.5 19c0-1.38 1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5" stroke="#A6492C" stroke-width="1.8" stroke-linecap="round"/><circle cx="15" cy="15" r="1.2" fill="#A6492C"/><circle cx="21" cy="15" r="1.2" fill="#A6492C"/></svg>
+            <span class="hub-panel-title">Agent</span>
+            <span class="st ok" style="margin-left:auto">No changes needed</span>
+          </div>
+          <div class="hub-panel-desc">The LLM (e.g. Claude) drives the conversation and decides which tool to call. We expose tools via MCP — the agent consumes them without any modification on our side.</div>
+          <div class="kw-row">
+            <span class="kw hi">Claude Desktop</span>
+            <span class="kw hi">Cursor</span>
+            <span class="kw">Any MCP-enabled client</span>
+            <span class="kw">Calls tools mid-conversation</span>
+            <span class="kw">Returns cited answers</span>
+          </div>
+        </div>
+
+        <!-- MCP panel -->
+        <div class="hub-panel" id="hp-mcp">
+          <div class="hub-panel-head">
+            <svg width="22" height="22" viewBox="0 0 36 36" fill="none"><rect x="14" y="8" width="8" height="5" rx="1.5" stroke="#A6492C" stroke-width="1.8"/><path d="M18 13v3M12 16h12v6a6 6 0 01-12 0v-6z" stroke="#A6492C" stroke-width="1.8" stroke-linejoin="round"/><path d="M18 28v1" stroke="#A6492C" stroke-width="1.8" stroke-linecap="round"/><circle cx="15.5" cy="14" r="1" fill="#A6492C"/><circle cx="20.5" cy="14" r="1" fill="#A6492C"/></svg>
+            <span class="hub-panel-title">MCP Server</span>
+            <span class="st ok" style="margin-left:auto">Shipped</span>
+          </div>
+          <div class="hub-panel-desc">Model Context Protocol is an open standard for tool-calling. The server is ~100 lines of Python (FastMCP) and exposes three tools the agent can call at any point during a chat.</div>
+          <div class="tool-grid">
+            <div class="tool-card">
+              <div class="tool-card-ico">
+                <!-- magnifying glass -->
+                <svg viewBox="0 0 24 24" fill="none"><circle cx="10.5" cy="10.5" r="5.5" stroke="#A6492C" stroke-width="1.6"/><path d="M15 15l4 4" stroke="#A6492C" stroke-width="1.6" stroke-linecap="round"/></svg>
+              </div>
+              <div class="tool-card-name"><code>search_um</code></div>
+              <div class="tool-card-desc">Semantic search over all manual content. Returns ranked chunks with citations.</div>
             </div>
-          </div>
-          <div class="arch-block a-green" style="flex:1">
-            <div class="arch-label">SQLite — Register DB</div>
-            <div class="arch-sub">516 registers · 3,341 bit fields · 45 peripherals</div>
-          </div>
-        </div>
-
-        <div class="arch-divider">↑ &nbsp;One-time ingestion pipeline</div>
-
-        <div class="arch-row">
-          <div class="arch-block a-gray">
-            <div class="arch-label">📄 Source: Technical Documentation PDF · e.g. 1,907 pages (RA6M4 Hardware UM)</div>
-            <div class="arch-pills">
-              <span class="arch-pill">pdfplumber — tables</span>
-              <span class="arch-pill">PyMuPDF — figures &amp; text</span>
-              <span class="arch-pill">TOC-aware section paths</span>
+            <div class="tool-card">
+              <div class="tool-card-ico">
+                <!-- circuit / register -->
+                <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="7" width="18" height="10" rx="2" stroke="#A6492C" stroke-width="1.6"/><path d="M7 7V5M12 7V5M17 7V5M7 17v2M12 17v2M17 17v2" stroke="#A6492C" stroke-width="1.6" stroke-linecap="round"/><path d="M7 12h2M15 12h2M11 10v4" stroke="#A6492C" stroke-width="1.6" stroke-linecap="round"/></svg>
+              </div>
+              <div class="tool-card-name"><code>register_lookup</code></div>
+              <div class="tool-card-desc">Exact SQL lookup for register addresses, reset values, and bit fields.</div>
+            </div>
+            <div class="tool-card">
+              <div class="tool-card-ico">
+                <!-- image frame -->
+                <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" stroke="#A6492C" stroke-width="1.6"/><circle cx="8.5" cy="8.5" r="1.5" stroke="#A6492C" stroke-width="1.4"/><path d="M3 15l5-5 4 4 3-3 6 6" stroke="#A6492C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </div>
+              <div class="tool-card-name"><code>get_figure</code></div>
+              <div class="tool-card-desc">Fetches a diagram by ID and returns the actual image for the LLM to see.</div>
             </div>
           </div>
         </div>
 
-      </div>
-    </div>
-  </section>
-
-  <!-- DEPLOYMENT OPTIONS -->
-  <section>
-    <div class="section-label"><div class="sl-eyebrow">Enterprise deployment</div></div>
-    <h2>Deployment Options — Tradeoffs</h2>
-    <p style="font-size:14px;color:var(--text-sm);margin-bottom:20px;max-width:720px">
-      The same RAG core can be packaged in different ways depending on data sensitivity, team size, and infrastructure maturity.
-      The example below is based on ingesting a <strong>~2,000-page technical document</strong> into ~15,000 searchable chunks — representative of large enterprise documentation.
-    </p>
-
-    <div style="overflow-x:auto">
-    <table class="deploy-table">
-      <thead>
-        <tr>
-          <th style="width:155px">Option</th>
-          <th style="width:88px">Best fit</th>
-          <th>Advantages</th>
-          <th>Disadvantages</th>
-          <th style="width:105px">Running cost</th>
-          <th style="width:85px">Data privacy</th>
-        </tr>
-      </thead>
-      <tbody>
-
-        <tr>
-          <td>
-            <div class="opt-name">① Local / Developer</div>
-            <div class="opt-sub">Runs entirely on the engineer's machine — this POC</div>
-          </td>
-          <td><span class="fit-pill fit-poc">POC / 1 user</span></td>
-          <td>
-            <div class="pro-item">Zero infrastructure cost</div>
-            <div class="pro-item">Data never leaves the machine</div>
-            <div class="pro-item">Works fully offline</div>
-            <div class="pro-item">Fastest iteration cycle</div>
-          </td>
-          <td>
-            <div class="con-item">Not shareable across team</div>
-            <div class="con-item">No centralised document version control</div>
-            <div class="con-item">Each engineer re-runs ingestion independently</div>
-          </td>
-          <td><span class="cost-pill cost-low">~$0/mo</span></td>
-          <td>⭐⭐⭐⭐⭐<br><span style="font-size:11px;color:var(--text-sm)">Fully offline</span></td>
-        </tr>
-
-        <tr>
-          <td>
-            <div class="opt-name">② Team Server</div>
-            <div class="opt-sub">Shared on-premise server; engineers connect via IDE plugin or chat UI</div>
-          </td>
-          <td><span class="fit-pill fit-team">5–50 users</span></td>
-          <td>
-            <div class="pro-item">Single ingestion, shared index</div>
-            <div class="pro-item">Document versions managed centrally</div>
-            <div class="pro-item">Data stays fully on-premise</div>
-            <div class="pro-item">Supports concurrent queries</div>
-          </td>
-          <td>
-            <div class="con-item">Requires VM / container setup</div>
-            <div class="con-item">GPU needed for fast ingestion at scale</div>
-            <div class="con-item">Auth &amp; access control overhead</div>
-          </td>
-          <td><span class="cost-pill cost-low">$50–300/mo</span><br><span style="font-size:10px;color:var(--text-sm)">server + ops</span></td>
-          <td>⭐⭐⭐⭐<br><span style="font-size:11px;color:var(--text-sm)">On-premise</span></td>
-        </tr>
-
-        <tr>
-          <td>
-            <div class="opt-name">③ Private Cloud (VPC)</div>
-            <div class="opt-sub">Deployed in enterprise cloud (AWS / Azure / GCP) with private networking</div>
-          </td>
-          <td><span class="fit-pill fit-ent">Enterprise</span></td>
-          <td>
-            <div class="pro-item">Scales to hundreds of users</div>
-            <div class="pro-item">Managed vector DB (Pinecone, Weaviate, pgvector)</div>
-            <div class="pro-item">SSO / LDAP integration, audit logs</div>
-            <div class="pro-item">Auto re-index on document update</div>
-          </td>
-          <td>
-            <div class="con-item">Higher infrastructure cost</div>
-            <div class="con-item">Cloud vendor dependency</div>
-            <div class="con-item">Data resides in cloud (even if private VPC)</div>
-            <div class="con-item">DevOps / MLOps overhead</div>
-          </td>
-          <td><span class="cost-pill cost-med">$300–1,500/mo</span><br><span style="font-size:10px;color:var(--text-sm)">cloud + ops</span></td>
-          <td>⭐⭐⭐<br><span style="font-size:11px;color:var(--text-sm)">Private VPC</span></td>
-        </tr>
-
-        <tr>
-          <td>
-            <div class="opt-name">④ SaaS / Managed AI</div>
-            <div class="opt-sub">Managed RAG platform — Vertex AI, Azure OpenAI Service, Cohere</div>
-          </td>
-          <td><span class="fit-pill fit-cloud">Cloud-first org</span></td>
-          <td>
-            <div class="pro-item">Zero infrastructure management</div>
-            <div class="pro-item">Built-in auth, monitoring, SLA</div>
-            <div class="pro-item">Multi-region, high availability</div>
-            <div class="pro-item">Usage-based pricing — pay as you go</div>
-          </td>
-          <td>
-            <div class="con-item">Proprietary data sent to external vendor</div>
-            <div class="con-item">Highest per-query cost at scale</div>
-            <div class="con-item">Vendor lock-in risk</div>
-            <div class="con-item">May conflict with IP / compliance policy</div>
-          </td>
-          <td><span class="cost-pill cost-high">$0.002–0.01/query</span><br><span style="font-size:10px;color:var(--text-sm)">+ platform fee</span></td>
-          <td>⭐⭐<br><span style="font-size:11px;color:var(--text-sm)">Vendor terms</span></td>
-        </tr>
-
-      </tbody>
-    </table>
-    </div>
-
-    <!-- RADAR CARDS -->
-    <div class="radar-wrap">
-
-      <div class="radar-card">
-        <div class="rc-name"><span style="width:22px;height:22px;border-radius:50%;background:var(--blue-lt);color:var(--blue);font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center">1</span> Local / Developer</div>
-        <div class="rc-row"><div class="rc-label">Privacy</div><div class="rc-bar-bg"><div class="rc-bar" style="width:100%;background:var(--green)"></div></div><div class="rc-val" style="color:var(--green)">5/5</div></div>
-        <div class="rc-row"><div class="rc-label">Scalability</div><div class="rc-bar-bg"><div class="rc-bar" style="width:20%;background:var(--red)"></div></div><div class="rc-val" style="color:var(--red)">1/5</div></div>
-        <div class="rc-row"><div class="rc-label">Cost</div><div class="rc-bar-bg"><div class="rc-bar" style="width:100%;background:var(--green)"></div></div><div class="rc-val" style="color:var(--green)">5/5</div></div>
-        <div class="rc-row"><div class="rc-label">Setup effort</div><div class="rc-bar-bg"><div class="rc-bar" style="width:100%;background:var(--green)"></div></div><div class="rc-val" style="color:var(--green)">5/5</div></div>
-        <div class="rc-row"><div class="rc-label">Team access</div><div class="rc-bar-bg"><div class="rc-bar" style="width:20%;background:var(--red)"></div></div><div class="rc-val" style="color:var(--red)">1/5</div></div>
-      </div>
-
-      <div class="radar-card">
-        <div class="rc-name"><span style="width:22px;height:22px;border-radius:50%;background:var(--purple-lt);color:var(--purple);font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center">2</span> Team Server</div>
-        <div class="rc-row"><div class="rc-label">Privacy</div><div class="rc-bar-bg"><div class="rc-bar" style="width:80%;background:var(--green)"></div></div><div class="rc-val" style="color:var(--green)">4/5</div></div>
-        <div class="rc-row"><div class="rc-label">Scalability</div><div class="rc-bar-bg"><div class="rc-bar" style="width:60%;background:var(--orange)"></div></div><div class="rc-val" style="color:var(--orange)">3/5</div></div>
-        <div class="rc-row"><div class="rc-label">Cost</div><div class="rc-bar-bg"><div class="rc-bar" style="width:80%;background:var(--green)"></div></div><div class="rc-val" style="color:var(--green)">4/5</div></div>
-        <div class="rc-row"><div class="rc-label">Setup effort</div><div class="rc-bar-bg"><div class="rc-bar" style="width:60%;background:var(--orange)"></div></div><div class="rc-val" style="color:var(--orange)">3/5</div></div>
-        <div class="rc-row"><div class="rc-label">Team access</div><div class="rc-bar-bg"><div class="rc-bar" style="width:80%;background:var(--green)"></div></div><div class="rc-val" style="color:var(--green)">4/5</div></div>
-      </div>
-
-      <div class="radar-card">
-        <div class="rc-name"><span style="width:22px;height:22px;border-radius:50%;background:#fef9c3;color:#92400e;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center">3</span> Private Cloud</div>
-        <div class="rc-row"><div class="rc-label">Privacy</div><div class="rc-bar-bg"><div class="rc-bar" style="width:60%;background:var(--orange)"></div></div><div class="rc-val" style="color:var(--orange)">3/5</div></div>
-        <div class="rc-row"><div class="rc-label">Scalability</div><div class="rc-bar-bg"><div class="rc-bar" style="width:100%;background:var(--green)"></div></div><div class="rc-val" style="color:var(--green)">5/5</div></div>
-        <div class="rc-row"><div class="rc-label">Cost</div><div class="rc-bar-bg"><div class="rc-bar" style="width:40%;background:var(--orange)"></div></div><div class="rc-val" style="color:var(--orange)">2/5</div></div>
-        <div class="rc-row"><div class="rc-label">Setup effort</div><div class="rc-bar-bg"><div class="rc-bar" style="width:40%;background:var(--orange)"></div></div><div class="rc-val" style="color:var(--orange)">2/5</div></div>
-        <div class="rc-row"><div class="rc-label">Team access</div><div class="rc-bar-bg"><div class="rc-bar" style="width:100%;background:var(--green)"></div></div><div class="rc-val" style="color:var(--green)">5/5</div></div>
-      </div>
-
-      <div class="radar-card">
-        <div class="rc-name"><span style="width:22px;height:22px;border-radius:50%;background:var(--green-lt);color:var(--green);font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center">4</span> SaaS / Managed</div>
-        <div class="rc-row"><div class="rc-label">Privacy</div><div class="rc-bar-bg"><div class="rc-bar" style="width:40%;background:var(--red)"></div></div><div class="rc-val" style="color:var(--red)">2/5</div></div>
-        <div class="rc-row"><div class="rc-label">Scalability</div><div class="rc-bar-bg"><div class="rc-bar" style="width:100%;background:var(--green)"></div></div><div class="rc-val" style="color:var(--green)">5/5</div></div>
-        <div class="rc-row"><div class="rc-label">Cost</div><div class="rc-bar-bg"><div class="rc-bar" style="width:20%;background:var(--red)"></div></div><div class="rc-val" style="color:var(--red)">1/5</div></div>
-        <div class="rc-row"><div class="rc-label">Setup effort</div><div class="rc-bar-bg"><div class="rc-bar" style="width:100%;background:var(--green)"></div></div><div class="rc-val" style="color:var(--green)">5/5</div></div>
-        <div class="rc-row"><div class="rc-label">Team access</div><div class="rc-bar-bg"><div class="rc-bar" style="width:100%;background:var(--green)"></div></div><div class="rc-val" style="color:var(--green)">5/5</div></div>
-      </div>
-
-    </div>
-
-    <!-- INGESTION TIME COMPARISON -->
-    <h3 style="font-size:16px;font-weight:700;margin:28px 0 14px">Ingestion Time — Local vs Cloud</h3>
-    <p style="font-size:13px;color:var(--text-sm);margin-bottom:16px;max-width:680px">
-      Ingestion is a one-time (or per-revision) operation. The table below shows estimated times for a representative ~2,000-page technical document (~15,000 chunks).
-      <em>Measured on this POC: CPU-only laptop, all-MiniLM-L6-v2, 15,590 chunks → <strong>26 minutes</strong> total.</em>
-    </p>
-    <div style="overflow-x:auto">
-    <table class="deploy-table">
-      <thead>
-        <tr>
-          <th>Environment</th>
-          <th>Hardware</th>
-          <th>Parse + Extract</th>
-          <th>Embed (15k chunks)</th>
-          <th style="width:110px">Total (est.)</th>
-          <th style="width:90px">Cost (one-time)</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><div class="opt-name">Local CPU</div><div class="opt-sub">Developer laptop (no GPU)</div></td>
-          <td style="font-size:12px">i7/i9, 16 GB RAM</td>
-          <td style="font-size:13px">~13 min</td>
-          <td style="font-size:13px">~13 min</td>
-          <td><span class="cost-pill cost-low">~26 min</span></td>
-          <td><span class="cost-pill cost-low">$0</span></td>
-        </tr>
-        <tr>
-          <td><div class="opt-name">Local GPU</div><div class="opt-sub">Developer workstation with GPU</div></td>
-          <td style="font-size:12px">RTX 3080 / 4090</td>
-          <td style="font-size:13px">~13 min</td>
-          <td style="font-size:13px">~1–2 min</td>
-          <td><span class="cost-pill cost-low">~15 min</span></td>
-          <td><span class="cost-pill cost-low">$0</span></td>
-        </tr>
-        <tr>
-          <td><div class="opt-name">Cloud CPU Instance</div><div class="opt-sub">e.g. AWS c6i.2xlarge</div></td>
-          <td style="font-size:12px">8 vCPU, 16 GB</td>
-          <td style="font-size:13px">~10 min</td>
-          <td style="font-size:13px">~8 min</td>
-          <td><span class="cost-pill cost-low">~18 min</span></td>
-          <td><span class="cost-pill cost-low">~$0.05</span></td>
-        </tr>
-        <tr>
-          <td><div class="opt-name">Cloud GPU Instance</div><div class="opt-sub">e.g. AWS g4dn.xlarge (T4 GPU)</div></td>
-          <td style="font-size:12px">T4 16 GB VRAM</td>
-          <td style="font-size:13px">~10 min</td>
-          <td style="font-size:13px">&lt;1 min</td>
-          <td><span class="cost-pill cost-low">~11 min</span></td>
-          <td><span class="cost-pill cost-med">~$0.20</span></td>
-        </tr>
-        <tr>
-          <td><div class="opt-name">Cloud Embedding API</div><div class="opt-sub">e.g. OpenAI text-embedding-3-small</div></td>
-          <td style="font-size:12px">Managed API</td>
-          <td style="font-size:13px">~10 min</td>
-          <td style="font-size:13px">~2–3 min</td>
-          <td><span class="cost-pill cost-med">~13 min</span></td>
-          <td><span class="cost-pill cost-med">~$0.30</span><br><span style="font-size:10px;color:var(--text-sm)">$0.02/1M tokens</span></td>
-        </tr>
-      </tbody>
-    </table>
-    </div>
-
-    <!-- EMBEDDING MODEL COMPARISON -->
-    <h3 style="font-size:16px;font-weight:700;margin:28px 0 14px">Embedding Model Comparison</h3>
-    <p style="font-size:13px;color:var(--text-sm);margin-bottom:16px;max-width:680px">
-      Choice of embedding model directly affects retrieval quality, ingestion speed, and whether data leaves the network.
-      ★ = model used in this POC.
-    </p>
-    <div style="overflow-x:auto">
-    <table class="deploy-table">
-      <thead>
-        <tr>
-          <th>Model</th>
-          <th style="width:70px">Dim</th>
-          <th style="width:80px">Size</th>
-          <th style="width:80px">Speed (CPU)</th>
-          <th>Retrieval quality</th>
-          <th style="width:80px">Cost</th>
-          <th style="width:80px">Privacy</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr style="background:#fffbeb">
-          <td>
-            <div class="opt-name">★ all-MiniLM-L6-v2</div>
-            <div class="opt-sub">sentence-transformers — used in this POC</div>
-          </td>
-          <td style="font-size:13px;text-align:center">384</td>
-          <td style="font-size:13px;text-align:center">90 MB</td>
-          <td><span class="cost-pill cost-low">Fast</span></td>
-          <td>
-            <div class="pro-item">Good for English technical text</div>
-            <div class="con-item">Weaker on domain-specific abbreviations</div>
-          </td>
-          <td><span class="cost-pill cost-low">Free</span></td>
-          <td>⭐⭐⭐⭐⭐<br><span style="font-size:10px;color:var(--text-sm)">Local</span></td>
-        </tr>
-        <tr>
-          <td>
-            <div class="opt-name">all-mpnet-base-v2</div>
-            <div class="opt-sub">sentence-transformers — higher quality, slower</div>
-          </td>
-          <td style="font-size:13px;text-align:center">768</td>
-          <td style="font-size:13px;text-align:center">420 MB</td>
-          <td><span class="cost-pill cost-med">Medium</span></td>
-          <td>
-            <div class="pro-item">Better semantic understanding</div>
-            <div class="pro-item">Strong MTEB benchmark score</div>
-            <div class="con-item">~3× slower than MiniLM on CPU</div>
-          </td>
-          <td><span class="cost-pill cost-low">Free</span></td>
-          <td>⭐⭐⭐⭐⭐<br><span style="font-size:10px;color:var(--text-sm)">Local</span></td>
-        </tr>
-        <tr>
-          <td>
-            <div class="opt-name">bge-large-en-v1.5</div>
-            <div class="opt-sub">BAAI — top-tier local model (MTEB SOTA)</div>
-          </td>
-          <td style="font-size:13px;text-align:center">1024</td>
-          <td style="font-size:13px;text-align:center">1.3 GB</td>
-          <td><span class="cost-pill cost-high">Slow on CPU</span></td>
-          <td>
-            <div class="pro-item">State-of-the-art local retrieval</div>
-            <div class="pro-item">Excellent on technical/domain text</div>
-            <div class="con-item">GPU recommended for ingestion</div>
-          </td>
-          <td><span class="cost-pill cost-low">Free</span></td>
-          <td>⭐⭐⭐⭐⭐<br><span style="font-size:10px;color:var(--text-sm)">Local</span></td>
-        </tr>
-        <tr>
-          <td>
-            <div class="opt-name">text-embedding-3-small</div>
-            <div class="opt-sub">OpenAI API</div>
-          </td>
-          <td style="font-size:13px;text-align:center">1536</td>
-          <td style="font-size:13px;text-align:center">API</td>
-          <td><span class="cost-pill cost-low">Fast (API)</span></td>
-          <td>
-            <div class="pro-item">Strong out-of-the-box quality</div>
-            <div class="pro-item">No local GPU needed</div>
-            <div class="con-item">Data sent to OpenAI servers</div>
-            <div class="con-item">Per-token cost adds up at scale</div>
-          </td>
-          <td><span class="cost-pill cost-med">$0.02/1M tokens</span></td>
-          <td>⭐⭐<br><span style="font-size:10px;color:var(--text-sm)">OpenAI servers</span></td>
-        </tr>
-        <tr>
-          <td>
-            <div class="opt-name">text-embedding-3-large</div>
-            <div class="opt-sub">OpenAI API — highest quality</div>
-          </td>
-          <td style="font-size:13px;text-align:center">3072</td>
-          <td style="font-size:13px;text-align:center">API</td>
-          <td><span class="cost-pill cost-low">Fast (API)</span></td>
-          <td>
-            <div class="pro-item">Best retrieval quality from OpenAI</div>
-            <div class="pro-item">Handles nuanced technical queries</div>
-            <div class="con-item">Data sent to OpenAI servers</div>
-            <div class="con-item">5× more expensive than -small</div>
-          </td>
-          <td><span class="cost-pill cost-high">$0.13/1M tokens</span></td>
-          <td>⭐⭐<br><span style="font-size:10px;color:var(--text-sm)">OpenAI servers</span></td>
-        </tr>
-        <tr>
-          <td>
-            <div class="opt-name">embed-v3 (Cohere)</div>
-            <div class="opt-sub">Cohere API — strong on long documents</div>
-          </td>
-          <td style="font-size:13px;text-align:center">1024</td>
-          <td style="font-size:13px;text-align:center">API</td>
-          <td><span class="cost-pill cost-low">Fast (API)</span></td>
-          <td>
-            <div class="pro-item">Optimised for retrieval (R-precision)</div>
-            <div class="pro-item">Handles long chunks natively</div>
-            <div class="con-item">Data sent to Cohere servers</div>
-          </td>
-          <td><span class="cost-pill cost-med">$0.10/1M tokens</span></td>
-          <td>⭐⭐<br><span style="font-size:10px;color:var(--text-sm)">Cohere servers</span></td>
-        </tr>
-      </tbody>
-    </table>
-    </div>
-
-    <div class="highlight hl-blue" style="margin-top:20px">
-      <div class="hl-icon">⭐</div>
-      <div>
-        <div class="hl-title">Recommended path for most enterprise teams</div>
-        <div class="hl-text">
-          Start with <strong>Option ②</strong> (Team Server, on-premise) using <strong>bge-large-en-v1.5</strong> for best local quality — low cost, strong privacy, shared access.
-          Migrate to <strong>Option ③</strong> (Private Cloud) only when the team scales beyond ~50 users or cross-site HA is required.
-          Use cloud embedding APIs <em>only</em> if IP policy allows sending documentation content to external vendors.
+        <!-- DB panel -->
+        <div class="hub-panel" id="hp-db">
+          <div class="hub-panel-head">
+            <svg width="22" height="22" viewBox="0 0 36 36" fill="none"><ellipse cx="18" cy="11" rx="8" ry="3" stroke="#A6492C" stroke-width="1.8"/><path d="M10 11v5c0 1.66 3.58 3 8 3s8-1.34 8-3v-5" stroke="#A6492C" stroke-width="1.8"/><path d="M10 16v5c0 1.66 3.58 3 8 3s8-1.34 8-3v-5" stroke="#A6492C" stroke-width="1.8"/></svg>
+            <span class="hub-panel-title">Database</span>
+            <span class="st ok" style="margin-left:auto">Both live</span>
+          </div>
+          <div class="hub-panel-desc">Two stores, each the right tool for its job: ChromaDB finds passages by <em>meaning</em>; SQLite returns exact register values that must never be guessed.</div>
+          <div class="kw-row">
+            <span class="kw hi">ChromaDB</span><span class="kw">vector · meaning search · 50k+ chunks</span>
+            <span class="kw hi">SQLite</span><span class="kw">exact lookup · 516 registers · 3,341 bit-fields</span>
+            <span class="kw">Runs 100% locally · no cloud dependency</span>
+          </div>
         </div>
+
       </div>
     </div>
-  </section>
+  </div>
 
-  <!-- WHAT'S INDEXED -->
-  <section>
-    <div class="section-label"><div class="sl-eyebrow">Coverage</div></div>
-    <h2>What's Indexed</h2>
-    <div class="stat-row" style="margin-bottom:20px">
-      <div class="stat-card"><div class="sv" style="color:var(--blue)">10,507</div><div class="sl">Prose chunks</div><div class="ss">Descriptions, constraints, usage notes</div></div>
-      <div class="stat-card"><div class="sv" style="color:var(--purple)">3,341</div><div class="sl">Register bit fields</div><div class="ss">One chunk per field for precision</div></div>
-      <div class="stat-card"><div class="sv" style="color:var(--green)">753</div><div class="sl">General tables</div><div class="ss">Feature tables, timing params, control tables</div></div>
-      <div class="stat-card"><div class="sv" style="color:var(--orange)">989</div><div class="sl">Figures</div><div class="ss">Block diagrams, timing charts</div></div>
-      <div class="stat-card"><div class="sv" style="color:var(--gray)">45</div><div class="sl">Peripherals</div><div class="ss">SCI · USB · ADC · GPT · CAN · RTC…</div></div>
+  <!-- ════════════════════════════════════════════════════
+       DIAGRAM 2 — VISUAL PIPELINE
+  ════════════════════════════════════════════════════ -->
+  <div>
+    <div class="sec-label">How the database is built — ingestion pipeline</div>
+    <div class="pipeline-wrap">
+      <div class="pipeline-layout">
+
+        <!-- LEFT: visual flow — 2-column layout for clear routing -->
+        <div class="pipe-flow" id="pipeFlow">
+
+          <!--
+            2-column grid inside pipe-flow:
+              col-left  (main path): PDF → Text/Tables/Figures → Chunker → Embedding → ChromaDB
+              col-right (side path): Tables → Register Schema → SQLite
+
+            Tables node straddles both columns (centre), branching right to Register Schema.
+          -->
+          <style>
+            .pf-grid { display:grid; grid-template-columns:1fr 140px; gap:0; width:100%; align-items:start; }
+            .pf-col-main { display:flex; flex-direction:column; align-items:center; }
+            .pf-col-side { display:flex; flex-direction:column; align-items:center; padding-top:0; }
+            /* connector lines in SVG overlays */
+            .pf-conn { width:100%; overflow:visible; display:block; }
+          </style>
+
+          <!-- ── ROW 0: PDF (spans both cols) ── -->
+          <div style="display:flex;justify-content:center;margin-bottom:0;padding-right:140px;">
+            <div class="pf-node" data-pane="pdf" onclick="selectPane('pdf')" style="width:130px;">
+              <svg viewBox="0 0 28 28" fill="none">
+                <rect x="3" y="1" width="16" height="20" rx="2" stroke="#A6492C" stroke-width="1.6"/>
+                <path d="M15 1v5h5" stroke="#A6492C" stroke-width="1.6" stroke-linejoin="round"/>
+                <path d="M7 9h8M7 12h8M7 15h5" stroke="#A6492C" stroke-width="1.4" stroke-linecap="round"/>
+                <rect x="13" y="15" width="12" height="10" rx="1.5" fill="#F3E7DF" stroke="#A6492C" stroke-width="1.3"/>
+                <path d="M16 19.5h6M16 22h4" stroke="#A6492C" stroke-width="1.2" stroke-linecap="round"/>
+              </svg>
+              <div class="pf-node-label">PDF Input</div>
+              <div class="pf-node-sub">1,907 pages</div>
+            </div>
+          </div>
+
+          <!-- arrow down from PDF -->
+          <div style="display:flex;justify-content:center;padding-right:140px;">
+            <div class="pf-arrow-down"><div class="vline"></div><div class="tip"></div></div>
+          </div>
+
+          <!-- section label -->
+          <div style="font-size:9.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;padding-left:2px;">Extraction</div>
+
+          <!-- ── ROW 1: 3 extract nodes + Register Schema side-by-side ── -->
+          <!--
+            Layout:
+              [Text]  [Tables]  [Figures]   |  [Register Schema]
+                        ↓ (dashed right arrow to Register Schema)
+          -->
+          <div style="display:grid;grid-template-columns:1fr 140px;gap:0;width:100%;align-items:start;">
+
+            <!-- Left: 3 extract nodes -->
+            <div style="display:flex;flex-direction:column;align-items:center;">
+
+              <!-- fan-out lines from centre to 3 nodes -->
+              <div style="position:relative;width:100%;height:24px;">
+                <svg style="position:absolute;inset:0;width:100%;height:24px;overflow:visible;pointer-events:none" viewBox="0 0 300 24" preserveAspectRatio="none">
+                  <line x1="150" y1="0"  x2="150" y2="8"  stroke="#DAD7CC" stroke-width="1.8"/>
+                  <line x1="45"  y1="8"  x2="255" y2="8"  stroke="#DAD7CC" stroke-width="1.8"/>
+                  <line x1="45"  y1="8"  x2="45"  y2="24" stroke="#DAD7CC" stroke-width="1.8"/>
+                  <line x1="150" y1="8"  x2="150" y2="24" stroke="#DAD7CC" stroke-width="1.8"/>
+                  <line x1="255" y1="8"  x2="255" y2="24" stroke="#DAD7CC" stroke-width="1.8"/>
+                </svg>
+              </div>
+
+              <div style="display:flex;gap:8px;width:100%;">
+                <!-- Text -->
+                <div class="pf-node" data-pane="text" onclick="selectPane('text')" style="flex:1;">
+                  <svg viewBox="0 0 28 28" fill="none">
+                    <rect x="3" y="3" width="22" height="22" rx="2.5" stroke="#A6492C" stroke-width="1.5"/>
+                    <path d="M7 9h14M7 13h14M7 17h9" stroke="#A6492C" stroke-width="1.4" stroke-linecap="round"/>
+                  </svg>
+                  <div class="pf-node-label">Text</div>
+                  <div class="pf-node-sub">67,090 blocks</div>
+                </div>
+                <!-- Tables -->
+                <div class="pf-node" data-pane="tables" onclick="selectPane('tables')" style="flex:1;">
+                  <svg viewBox="0 0 28 28" fill="none">
+                    <rect x="3" y="5" width="22" height="18" rx="2" stroke="#A6492C" stroke-width="1.5"/>
+                    <path d="M3 11h22M3 17h22M10 5v18M18 5v18" stroke="#A6492C" stroke-width="1.3"/>
+                  </svg>
+                  <div class="pf-node-label">Tables</div>
+                  <div class="pf-node-sub">1,613 detected</div>
+                </div>
+                <!-- Figures -->
+                <div class="pf-node" data-pane="figures" onclick="selectPane('figures')" style="flex:1;">
+                  <svg viewBox="0 0 28 28" fill="none">
+                    <rect x="3" y="4" width="22" height="18" rx="2" stroke="#A6492C" stroke-width="1.5"/>
+                    <circle cx="9" cy="10" r="2" stroke="#A6492C" stroke-width="1.4"/>
+                    <path d="M3 17l6-5 5 5 4-4 7 7" stroke="#A6492C" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  <div class="pf-node-label">Figures</div>
+                  <div class="pf-node-sub">989 extracted</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right column: empty top row (Register Schema aligns below Tables) -->
+            <div style="height:100%;"></div>
+
+          </div><!-- /ROW 1 grid -->
+
+          <!-- ── ROUTING: Tables → Register Schema (right), all 3 → Chunker (down) ── -->
+          <!-- Full-width SVG that spans both columns, height=110px -->
+          <div style="position:relative;width:100%;height:110px;">
+            <svg style="position:absolute;inset:0;width:100%;height:110px;overflow:visible;pointer-events:none"
+                 viewBox="0 0 440 110" preserveAspectRatio="none">
+
+              <!-- col positions: Text≈50, Tables≈150, Figures≈250, RegSchema≈370 (right col centre) -->
+
+              <!-- Text down → merge at y=50 → Chunker centre (col 185) -->
+              <line x1="50"  y1="0"  x2="50"  y2="50" stroke="#DAD7CC" stroke-width="1.8"/>
+              <line x1="50"  y1="50" x2="185" y2="50" stroke="#DAD7CC" stroke-width="1.8"/>
+              <line x1="185" y1="50" x2="185" y2="110" stroke="#DAD7CC" stroke-width="1.8"/>
+              <polygon points="180,104 190,104 185,110" fill="#DAD7CC"/>
+
+              <!-- Figures down → merge at y=50 → Chunker -->
+              <line x1="250" y1="0"  x2="250" y2="50" stroke="#DAD7CC" stroke-width="1.8"/>
+              <line x1="250" y1="50" x2="185" y2="50" stroke="#DAD7CC" stroke-width="1.8"/>
+
+              <!-- Tables (col 150) down → splits:
+                   path A (solid): down → merge at y=50 → Chunker
+                   path B (dashed): right → Register Schema at col 370 -->
+              <line x1="150" y1="0"  x2="150" y2="30" stroke="#DAD7CC" stroke-width="1.8"/>
+              <!-- path A: continue down -->
+              <line x1="150" y1="30" x2="150" y2="50" stroke="#DAD7CC" stroke-width="1.8"/>
+              <!-- path B: dashed right to Register Schema -->
+              <line x1="150" y1="30" x2="370" y2="30" stroke="#DAD7CC" stroke-width="1.8" stroke-dasharray="5 3"/>
+              <line x1="370" y1="30" x2="370" y2="42" stroke="#DAD7CC" stroke-width="1.8" stroke-dasharray="5 3"/>
+              <polygon points="365,37 375,37 370,43" fill="#DAD7CC"/>
+
+              <!-- label on dashed line -->
+              <text x="260" y="24" font-size="9" fill="#73726C" font-family="Inter,system-ui,sans-serif" text-anchor="middle">register tables only</text>
+
+              <!-- Register Schema (col 370) bottom → left back to Chunker -->
+              <!-- Register Schema node height ≈ 85px, so bottom at y=43+85=128 > 110; we extend SVG or use a separate connector below -->
+            </svg>
+
+            <!-- Register Schema node — absolutely positioned in right col -->
+            <div style="position:absolute;right:0;top:42px;width:130px;">
+              <div class="pf-node" data-pane="regschema" onclick="selectPane('regschema')"
+                   style="background:linear-gradient(135deg,#EDF5EC,#fff);border-color:#AACFA8;width:100%;">
+                <svg viewBox="0 0 28 28" fill="none">
+                  <rect x="3" y="5" width="22" height="18" rx="2" stroke="#4F7A45" stroke-width="1.5"/>
+                  <path d="M3 11h22M10 5v18" stroke="#4F7A45" stroke-width="1.3"/>
+                  <path d="M15 14h5M15 17h3" stroke="#4F7A45" stroke-width="1.3" stroke-linecap="round"/>
+                  <path d="M6 14l2 2 3-3" stroke="#4F7A45" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <div class="pf-node-label" style="font-size:11px;color:#3A6935;">Register Schema</div>
+                <div class="pf-node-sub">register tables only</div>
+              </div>
+            </div>
+          </div><!-- /routing -->
+
+          <!-- connector from Register Schema down to SQLite + back to chunker note -->
+          <!-- This row: left side = Chunker, right side = arrow down to SQLite -->
+          <div style="display:grid;grid-template-columns:1fr 140px;gap:0;width:100%;align-items:start;">
+
+            <!-- LEFT: Chunking node -->
+            <div style="display:flex;flex-direction:column;align-items:center;">
+              <div class="pf-node" data-pane="chunk" onclick="selectPane('chunk')" style="width:160px;margin-bottom:4px;">
+                <svg viewBox="0 0 28 28" fill="none">
+                  <circle cx="7" cy="8"  r="3" stroke="#A6492C" stroke-width="1.5"/>
+                  <circle cx="7" cy="20" r="3" stroke="#A6492C" stroke-width="1.5"/>
+                  <path d="M10 9.5L22 14M10 18.5L22 14" stroke="#A6492C" stroke-width="1.5" stroke-linecap="round"/>
+                  <path d="M14 14h8" stroke="#A6492C" stroke-width="1.4" stroke-linecap="round" stroke-dasharray="2 2"/>
+                </svg>
+                <div class="pf-node-label">Chunking</div>
+                <div class="pf-node-sub">4 chunk types</div>
+              </div>
+              <div class="pf-arrow-down"><div class="vline"></div><div class="tip"></div></div>
+              <!-- Embedding -->
+              <div class="pf-node" data-pane="embed" onclick="selectPane('embed')" style="width:160px;margin-bottom:4px;">
+                <svg viewBox="0 0 28 28" fill="none">
+                  <circle cx="14" cy="14" r="4"  stroke="#A6492C" stroke-width="1.5"/>
+                  <circle cx="5"  cy="7"  r="2"  stroke="#A6492C" stroke-width="1.4"/>
+                  <circle cx="23" cy="7"  r="2"  stroke="#A6492C" stroke-width="1.4"/>
+                  <circle cx="5"  cy="21" r="2"  stroke="#A6492C" stroke-width="1.4"/>
+                  <circle cx="23" cy="21" r="2"  stroke="#A6492C" stroke-width="1.4"/>
+                  <path d="M7 8.5l5 4M21 8.5l-5 4M7 19.5l5-4M21 19.5l-5-4" stroke="#A6492C" stroke-width="1.3"/>
+                </svg>
+                <div class="pf-node-label">Embedding</div>
+                <div class="pf-node-sub">all-MiniLM-L6-v2</div>
+              </div>
+              <div class="pf-arrow-down"><div class="vline"></div><div class="tip"></div></div>
+              <!-- ChromaDB -->
+              <div class="pf-db-node pf-db-chroma" data-pane="chromadb" onclick="selectPane('chromadb')" style="width:160px;">
+                <svg viewBox="0 0 32 32" fill="none">
+                  <ellipse cx="16" cy="9"  rx="9" ry="3.5" stroke="#2E6DA4" stroke-width="1.6"/>
+                  <path d="M7 9v7c0 1.93 4.03 3.5 9 3.5s9-1.57 9-3.5V9"  stroke="#2E6DA4" stroke-width="1.6"/>
+                  <path d="M7 16v7c0 1.93 4.03 3.5 9 3.5s9-1.57 9-3.5v-7" stroke="#2E6DA4" stroke-width="1.6"/>
+                  <path d="M10 13l2 2 5-5" stroke="#2E6DA4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <div class="pf-db-node-label">ChromaDB</div>
+                <div class="pf-db-node-sub">prose · tables · figures · registers</div>
+              </div>
+            </div>
+
+            <!-- RIGHT: arrow down to SQLite -->
+            <div style="display:flex;flex-direction:column;align-items:center;padding-top:8px;">
+              <div class="pf-arrow-down"><div class="vline" style="height:30px;"></div><div class="tip"></div></div>
+              <!-- register rows also feed Chunker — dashed label -->
+              <div style="font-size:9px;color:var(--muted);text-align:center;margin:4px 0 4px;line-height:1.4;font-style:italic;">register rows<br>↙ also → Chunker</div>
+              <div class="pf-arrow-down"><div class="vline" style="height:20px;"></div><div class="tip"></div></div>
+              <!-- SQLite -->
+              <div class="pf-db-node pf-db-sqlite" data-pane="sqlitedb" onclick="selectPane('sqlitedb')" style="width:125px;">
+                <svg viewBox="0 0 32 32" fill="none">
+                  <ellipse cx="16" cy="9"  rx="9" ry="3.5" stroke="#4F7A45" stroke-width="1.6"/>
+                  <path d="M7 9v7c0 1.93 4.03 3.5 9 3.5s9-1.57 9-3.5V9"  stroke="#4F7A45" stroke-width="1.6"/>
+                  <path d="M7 16v7c0 1.93 4.03 3.5 9 3.5s9-1.57 9-3.5v-7" stroke="#4F7A45" stroke-width="1.6"/>
+                  <path d="M11 19h10M11 22h6" stroke="#4F7A45" stroke-width="1.4" stroke-linecap="round"/>
+                </svg>
+                <div class="pf-db-node-label">SQLite</div>
+                <div class="pf-db-node-sub">516 registers<br>exact lookup</div>
+              </div>
+            </div>
+
+          </div><!-- /chunker+sqlite row -->
+
+        </div><!-- /pipe-flow -->
+
+        <!-- RIGHT: detail panel -->
+        <div class="pipe-detail" id="pipeDetail">
+
+          <div class="pipe-detail-empty" id="pipeEmpty">
+            <svg viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="16" stroke="#73726C" stroke-width="1.5"/><path d="M20 13v8M20 25v2" stroke="#73726C" stroke-width="2" stroke-linecap="round"/></svg>
+            Click any node on the left to see details
+          </div>
+
+          <!-- PDF -->
+          <div class="pipe-pane" id="pane-pdf">
+            <div class="pipe-detail-title">PDF Input</div>
+            <div class="pipe-detail-desc">The starting point: one PDF of the hardware user manual. All five extraction steps read from this single file.</div>
+            <div class="pipe-detail-head">Document metadata</div>
+            <table class="cmp">
+              <thead><tr><th>Field</th><th>Value</th></tr></thead>
+              <tbody>
+                <tr><td>File</td><td>r01uh0890ej0160-ra6m4.pdf</td></tr>
+                <tr><td>Chip</td><td>Renesas RA6M4</td></tr>
+                <tr><td>Pages</td><td>1,907</td></tr>
+                <tr><td>Revision</td><td>Rev.1.60</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Text -->
+          <div class="pipe-pane" id="pane-text">
+            <div class="pipe-detail-title">Text Extraction</div>
+            <div class="pipe-detail-desc">Every paragraph, heading, and caption is pulled out and tagged with its section path and page number — this is what lets every answer cite the exact page.</div>
+            <div class="pipe-detail-head" style="margin-bottom:8px">Technology comparison</div>
+            <table class="cmp">
+              <thead><tr><th>Option</th><th>Pros</th><th>Cons</th></tr></thead>
+              <tbody>
+                <tr class="cur"><td>PyMuPDF <span class="badge c">Current</span></td><td>Fast, local, rich block metadata</td><td>Can struggle with two-column layouts</td></tr>
+                <tr><td>pdfplumber <span class="badge a">Alt</span></td><td>Readable API; good for tables</td><td>Slower for full-document extraction</td></tr>
+                <tr><td>LlamaParse <span class="badge cl">Cloud</span></td><td>Best quality on complex layouts</td><td>Sends data to cloud; per-page cost</td></tr>
+              </tbody>
+            </table>
+            <div style="margin-top:10px"><span class="st ok">Shipped</span></div>
+          </div>
+
+          <!-- Tables -->
+          <div class="pipe-pane" id="pane-tables">
+            <div class="pipe-detail-title">Table Detection</div>
+            <div class="pipe-detail-desc">Camelot traces the actual grid lines in the PDF (lattice mode), correctly handling merged-cell headers that appear in register tables.</div>
+            <div class="pipe-detail-head" style="margin-bottom:8px">Technology comparison</div>
+            <table class="cmp">
+              <thead><tr><th>Option</th><th>Pros</th><th>Cons</th></tr></thead>
+              <tbody>
+                <tr class="cur"><td>Camelot lattice <span class="badge c">Current</span></td><td>Handles merged cells; reliable on gridded tables</td><td>Requires Ghostscript; slower</td></tr>
+                <tr><td>pdfplumber <span class="badge a">Alt</span></td><td>No extra dependency</td><td>Flat output — misses merged header rows</td></tr>
+                <tr><td>Unstructured.io <span class="badge cl">Cloud</span></td><td>Handles mixed layouts automatically</td><td>API cost; data leaves machine</td></tr>
+              </tbody>
+            </table>
+            <div style="margin-top:10px"><span class="st ok">Shipped</span></div>
+          </div>
+
+          <!-- Figures -->
+          <div class="pipe-pane" id="pane-figures">
+            <div class="pipe-detail-title">Figure Extraction</div>
+            <div class="pipe-detail-desc"><code>get_drawings()</code> captures vector shapes (flowcharts, block diagrams, timing diagrams) that <code>get_images()</code> misses. Each figure is cropped to a PNG and matched to its caption.</div>
+            <div class="pipe-detail-head" style="margin-bottom:8px">Technology comparison</div>
+            <table class="cmp">
+              <thead><tr><th>Option</th><th>Pros</th><th>Cons</th></tr></thead>
+              <tbody>
+                <tr class="cur"><td>PyMuPDF get_drawings() <span class="badge c">Current</span></td><td>Catches vector-drawn diagrams; no cloud needed</td><td>Misses bitmap raster images</td></tr>
+                <tr><td>PyMuPDF get_images()</td><td>Finds embedded raster images</td><td>Misses vector-drawn content (most figures here)</td></tr>
+                <tr><td>pdf2image + OpenCV <span class="badge a">Alt</span></td><td>Works on any content type</td><td>Rasterises whole page; slower</td></tr>
+              </tbody>
+            </table>
+            <div style="margin-top:10px"><span class="st ok">Shipped</span></div>
+          </div>
+
+          <!-- Register Schema -->
+          <div class="pipe-pane" id="pane-regschema">
+            <div class="pipe-detail-title">Register Schema</div>
+            <div class="pipe-detail-desc">Register tables (those with "Bit", "Symbol", "R/W", "Reset" columns) are parsed directly into SQLite — <em>without</em> going through the embedding model. This gives the agent a deterministic SQL lookup path that never guesses a value.</div>
+            <div class="pipe-detail-head" style="margin-bottom:8px">What flows here</div>
+            <table class="cmp">
+              <thead><tr><th>Input</th><th>Filter</th><th>Output</th></tr></thead>
+              <tbody>
+                <tr><td>tables.jsonl</td><td><code>is_register = true</code> only</td><td>registers.db (SQLite)</td></tr>
+                <tr><td>pages.jsonl</td><td>prose above each table (register name, address)</td><td>register metadata</td></tr>
+              </tbody>
+            </table>
+            <div class="pipe-detail-head" style="margin-top:14px;margin-bottom:8px">Note on dual storage</div>
+            <div style="font-size:12.5px;color:var(--ink-2);line-height:1.55;background:var(--bg-2);border-radius:8px;padding:10px 12px;">
+              Register data ends up in <strong>both</strong> stores:<br>
+              • <strong>SQLite</strong> — exact structured rows, used by <code>register_lookup</code> for precise queries<br>
+              • <strong>ChromaDB</strong> — chunker reads SQLite and creates <em>register_row</em> chunks that are embedded, enabling the register content to also be found via semantic search
+            </div>
+            <div style="margin-top:10px"><span class="st ok">Shipped</span></div>
+          </div>
+
+          <!-- Chunking -->
+          <div class="pipe-pane" id="pane-chunk">
+            <div class="pipe-detail-title">Chunking</div>
+            <div class="pipe-detail-desc">All extracted content is split into four chunk types. Each chunk carries its section path and page number so citations are never lost during retrieval.</div>
+            <div class="pipe-detail-head" style="margin-bottom:8px">Chunk types</div>
+            <table class="cmp">
+              <thead><tr><th>Type</th><th>Source</th><th>Unit</th></tr></thead>
+              <tbody>
+                <tr><td>Prose</td><td>pages.jsonl</td><td>~500-word sliding window</td></tr>
+                <tr><td>Register row</td><td>registers.db</td><td>1 per bit-field row</td></tr>
+                <tr><td>Figure</td><td>figures.jsonl</td><td>1 per extracted diagram</td></tr>
+                <tr><td>Table batch</td><td>tables.jsonl</td><td>40-row batches</td></tr>
+              </tbody>
+            </table>
+            <div style="margin-top:10px"><span class="st ok">Shipped</span></div>
+          </div>
+
+          <!-- Embedding -->
+          <div class="pipe-pane" id="pane-embed">
+            <div class="pipe-detail-title">Embedding &amp; Indexing</div>
+            <div class="pipe-detail-desc">Each chunk is converted to a vector by a local embedding model and stored in ChromaDB. This enables meaning-based search — finding the right passage even when the user phrases the question differently.</div>
+            <div class="pipe-detail-head" style="margin-bottom:8px">Model comparison</div>
+            <table class="cmp">
+              <thead><tr><th>Model</th><th>Quality</th><th>Cost</th></tr></thead>
+              <tbody>
+                <tr class="cur"><td>all-MiniLM-L6-v2 <span class="badge c">Current</span></td><td>Good for general text</td><td>Free · local · fast</td></tr>
+                <tr><td>BGE-large-en-v1.5 <span class="badge a">Upgrade</span></td><td>Better on technical text</td><td>Free · local · ~3× slower</td></tr>
+                <tr><td>OpenAI text-embedding-3-small <span class="badge cl">Cloud</span></td><td>Very high</td><td>~$0.02 / 1M tokens</td></tr>
+              </tbody>
+            </table>
+            <div style="margin-top:10px"><span class="st warn">Partial — upgrade path identified</span></div>
+          </div>
+
+          <!-- ChromaDB -->
+          <div class="pipe-pane" id="pane-chromadb">
+            <div class="pipe-detail-title">ChromaDB — Vector Store</div>
+            <div class="pipe-detail-desc">Stores all chunk types as embedding vectors. Powers the <code>search_um</code> and <code>get_figure</code> tools. Retrieves by cosine similarity — finds passages that <em>mean</em> the same thing as the query.</div>
+            <div class="pipe-detail-head" style="margin-bottom:8px">What it stores</div>
+            <table class="cmp">
+              <thead><tr><th>Content</th><th>Count</th></tr></thead>
+              <tbody>
+                <tr><td>Prose chunks</td><td>~40,000+</td></tr>
+                <tr><td>Register-row chunks</td><td>3,341</td></tr>
+                <tr><td>Figure caption chunks</td><td>989</td></tr>
+                <tr><td>Table batch chunks</td><td>~500+</td></tr>
+              </tbody>
+            </table>
+            <div class="pipe-detail-head" style="margin-top:14px;margin-bottom:8px">Alternatives</div>
+            <table class="cmp">
+              <thead><tr><th>Option</th><th>Scale</th><th>Cost</th></tr></thead>
+              <tbody>
+                <tr class="cur"><td>ChromaDB <span class="badge c">Current</span></td><td>Single machine</td><td>Free · local</td></tr>
+                <tr><td>FAISS <span class="badge a">Alt</span></td><td>Large / GPU</td><td>Free · local</td></tr>
+                <tr><td>pgvector <span class="badge a">Alt</span></td><td>Multi-user</td><td>Hosting cost</td></tr>
+                <tr><td>Pinecone <span class="badge cl">Cloud</span></td><td>Unlimited</td><td>~$70/mo starter</td></tr>
+              </tbody>
+            </table>
+            <div style="margin-top:10px"><span class="st ok">Shipped</span></div>
+          </div>
+
+          <!-- SQLite -->
+          <div class="pipe-pane" id="pane-sqlitedb">
+            <div class="pipe-detail-title">SQLite — Register Store</div>
+            <div class="pipe-detail-desc">Stores every hardware register with its exact address, reset value, and bit-field definitions. Powers the <code>register_lookup</code> tool. Deterministic SQL — the assistant reads the exact number, never estimates.</div>
+            <div class="pipe-detail-head" style="margin-bottom:8px">Schema</div>
+            <table class="cmp">
+              <thead><tr><th>Table</th><th>Rows</th></tr></thead>
+              <tbody>
+                <tr><td><code>registers</code> — peripheral, address, reset_value</td><td>516</td></tr>
+                <tr><td><code>bit_fields</code> — bits, symbol, R/W, function</td><td>3,341</td></tr>
+              </tbody>
+            </table>
+            <div class="pipe-detail-head" style="margin-top:14px;margin-bottom:8px">Alternatives</div>
+            <table class="cmp">
+              <thead><tr><th>Option</th><th>Scale</th><th>Cost</th></tr></thead>
+              <tbody>
+                <tr class="cur"><td>SQLite <span class="badge c">Current</span></td><td>Single machine, read-heavy</td><td>Free · zero config</td></tr>
+                <tr><td>PostgreSQL <span class="badge a">Alt</span></td><td>Multi-user, production</td><td>Hosting cost</td></tr>
+                <tr><td>DynamoDB <span class="badge cl">Cloud</span></td><td>Serverless, unlimited</td><td>Pay-per-request</td></tr>
+              </tbody>
+            </table>
+            <div style="margin-top:10px"><span class="st ok">Shipped</span></div>
+          </div>
+
+        </div><!-- /pipe-detail -->
+      </div><!-- /pipeline-layout -->
+    </div><!-- /pipeline-wrap -->
+  </div>
+
+  <!-- ════════════════════════════════════════════════════
+       DEMO STATS
+  ════════════════════════════════════════════════════ -->
+  <div>
+    <div class="sec-label">RA6M4 manual — run results</div>
+    <div class="stats-grid">
+
+      <div class="stat-card">
+        <div class="stat-ico">
+          <svg viewBox="0 0 20 20" fill="none"><rect x="2" y="1" width="12" height="16" rx="1.5" stroke="#A6492C" stroke-width="1.5"/><path d="M12 1v4h4" stroke="#A6492C" stroke-width="1.5" stroke-linejoin="round"/><path d="M5 7h6M5 10h6M5 13h3" stroke="#A6492C" stroke-width="1.3" stroke-linecap="round"/></svg>
+        </div>
+        <div><div class="stat-kv">1,907</div><div class="stat-kl">Pages parsed</div></div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-ico">
+          <svg viewBox="0 0 20 20" fill="none"><rect x="2" y="3" width="16" height="14" rx="1.5" stroke="#A6492C" stroke-width="1.5"/><path d="M5 7h10M5 10h10M5 13h6" stroke="#A6492C" stroke-width="1.3" stroke-linecap="round"/></svg>
+        </div>
+        <div><div class="stat-kv">67,090</div><div class="stat-kl">Text blocks</div></div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-ico">
+          <svg viewBox="0 0 20 20" fill="none"><rect x="2" y="4" width="16" height="12" rx="1.5" stroke="#A6492C" stroke-width="1.5"/><path d="M2 8h16M7 4v12M13 4v12" stroke="#A6492C" stroke-width="1.3"/></svg>
+        </div>
+        <div><div class="stat-kv">1,613</div><div class="stat-kl">Tables detected</div></div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-ico">
+          <svg viewBox="0 0 20 20" fill="none"><rect x="2" y="2" width="16" height="14" rx="1.5" stroke="#A6492C" stroke-width="1.5"/><circle cx="7" cy="7" r="1.5" stroke="#A6492C" stroke-width="1.3"/><path d="M2 13l5-4 4 4 3-3 4 4" stroke="#A6492C" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div><div class="stat-kv">989</div><div class="stat-kl">Figures extracted</div></div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-ico">
+          <svg viewBox="0 0 20 20" fill="none"><rect x="2" y="6" width="16" height="8" rx="1.5" stroke="#A6492C" stroke-width="1.5"/><path d="M5 6V4M10 6V4M15 6V4M5 14v2M10 14v2M15 14v2" stroke="#A6492C" stroke-width="1.4" stroke-linecap="round"/><path d="M5 10h2M13 10h2M9 9v2" stroke="#A6492C" stroke-width="1.3" stroke-linecap="round"/></svg>
+        </div>
+        <div><div class="stat-kv">516 / 3,341</div><div class="stat-kl">Registers / bit-fields</div></div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-ico">
+          <svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7.5" stroke="#A6492C" stroke-width="1.5"/><path d="M10 6v5l3 2" stroke="#A6492C" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div><div class="stat-kv">~2,254s</div><div class="stat-kl">Total ingestion time</div></div>
+      </div>
+
     </div>
+  </div>
 
-    <div class="highlight hl-blue">
-      <div class="hl-icon">💡</div>
-      <div>
-        <div class="hl-title">Every chunk carries a citation</div>
-        <div class="hl-text">Each result includes the document ID, revision, section path, and page number — so the agent can always tell the engineer exactly where the constraint comes from.</div>
-      </div>
-    </div>
-    <div class="highlight hl-green">
-      <div class="hl-icon">🏠</div>
-      <div>
-        <div class="hl-title">Fully local — no data leaves the machine</div>
-        <div class="hl-text">Embeddings use a local sentence-transformer model. Retrieval runs on-device. Only the final AI reasoning step uses an external model (Claude via MCP).</div>
-      </div>
-    </div>
-  </section>
-
-  <!-- INGESTION PIPELINE -->
-  <section>
-    <div class="section-label"><div class="sl-eyebrow">Pipeline</div></div>
-    <h2>Ingestion — One-Time Setup</h2>
-    <div style="background:white;border-radius:14px;border:1px solid var(--border);padding:28px 16px;overflow-x:auto">
-      <div class="pipe">
-        <div class="pipe-step">
-          <div class="pi a-blue">📄</div>
-          <div class="pt">Text + TOC</div>
-          <div class="pd">Prose blocks with section hierarchy</div>
-          <div class="po">67,090 blocks</div>
-        </div>
-        <div class="pipe-arrow">→</div>
-        <div class="pipe-step">
-          <div class="pi a-orange">🖼️</div>
-          <div class="pt">Figures</div>
-          <div class="pd">Caption detection, PNG crops</div>
-          <div class="po">989 figures</div>
-        </div>
-        <div class="pipe-arrow">→</div>
-        <div class="pipe-step">
-          <div class="pi a-green">📊</div>
-          <div class="pt">Tables</div>
-          <div class="pd">Register vs general, exclude figure zones</div>
-          <div class="po">1,613 tables</div>
-        </div>
-        <div class="pipe-arrow">→</div>
-        <div class="pipe-step">
-          <div class="pi a-purple">🗄️</div>
-          <div class="pt">Register DB</div>
-          <div class="pd">Structured SQLite for exact lookup</div>
-          <div class="po">516 registers</div>
-        </div>
-        <div class="pipe-arrow">→</div>
-        <div class="pipe-step">
-          <div class="pi a-blue">🧩</div>
-          <div class="pt">Chunk + Embed</div>
-          <div class="pd">Semantic chunks → vector embeddings</div>
-          <div class="po">15,590 chunks</div>
-        </div>
-        <div class="pipe-arrow">→</div>
-        <div class="pipe-step">
-          <div class="pi a-green">⚡</div>
-          <div class="pt">ChromaDB</div>
-          <div class="pd">Local vector store, query-ready</div>
-          <div class="po">Ready ✓</div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- NEXT STEPS -->
-  <section>
-    <div class="section-label"><div class="sl-eyebrow">Roadmap</div></div>
-    <h2>Potential Next Steps</h2>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px">
-
-      <div class="highlight hl-blue" style="margin-bottom:0;flex-direction:column;gap:8px">
-        <div style="display:flex;gap:10px;align-items:center"><div class="hl-icon">📚</div><div class="hl-title">Multi-Document Support</div></div>
-        <div class="hl-text">Extend to multiple document revisions or product lines. The pipeline is document-agnostic — each source gets its own namespace and can be queried independently or together.</div>
-      </div>
-
-      <div class="highlight hl-purple" style="margin-bottom:0;flex-direction:column;gap:8px">
-        <div style="display:flex;gap:10px;align-items:center"><div class="hl-icon">✅</div><div class="hl-title">Automated Config Review</div></div>
-        <div class="hl-text">Given a firmware config file or register map, the agent validates each setting against the source documentation and flags violations automatically.</div>
-      </div>
-
-      <div class="highlight hl-green" style="margin-bottom:0;flex-direction:column;gap:8px">
-        <div style="display:flex;gap:10px;align-items:center"><div class="hl-icon">👁️</div><div class="hl-title">VLM Figure Descriptions</div></div>
-        <div class="hl-text">Run a vision model over extracted diagrams to generate rich text summaries — enabling search by diagram content, not just caption text.</div>
-      </div>
-
-      <div class="highlight hl-orange" style="margin-bottom:0;flex-direction:column;gap:8px">
-        <div style="display:flex;gap:10px;align-items:center"><div class="hl-icon">🌐</div><div class="hl-title">IDE / Web Integration</div></div>
-        <div class="hl-text">Embed the assistant in VS Code or a web UI so engineers can query documentation without leaving their development environment.</div>
-      </div>
-
-    </div>
-  </section>
-
-</div>
+</div><!-- /container -->
 
 <div class="footer">
-  Technical Documentation AI Assistant &nbsp;·&nbsp; POC &nbsp;·&nbsp; Example: RA6M4 R01UH0890EJ0160 Rev.1.60
-  &nbsp;·&nbsp; pdfplumber · PyMuPDF · sentence-transformers · ChromaDB · FastMCP · Claude
+  Hardware UM AI Assistant &nbsp;&middot;&nbsp; POC &nbsp;&middot;&nbsp; RA6M4 R01UH0890EJ0160 Rev.1.60
 </div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ── Hub-and-spoke ── */
+  var spokeMap = { agent: 'hp-agent', mcp: 'hp-mcp', db: 'hp-db' };
+  var nodeMap  = { agent: 'sn-agent', mcp: 'sn-mcp', db: 'sn-db' };
+  var currentSpoke = null;
+
+  window.toggleSpoke = function (key) {
+    var panel = document.getElementById(spokeMap[key]);
+    var node  = document.getElementById(nodeMap[key]);
+    if (!panel || !node) return;
+    if (currentSpoke === key) {
+      panel.classList.remove('open');
+      node.classList.remove('active');
+      currentSpoke = null;
+      return;
+    }
+    if (currentSpoke) {
+      var p = document.getElementById(spokeMap[currentSpoke]);
+      var n = document.getElementById(nodeMap[currentSpoke]);
+      if (p) p.classList.remove('open');
+      if (n) n.classList.remove('active');
+    }
+    panel.classList.add('open');
+    node.classList.add('active');
+    currentSpoke = key;
+  };
+
+  /* ── Pipeline node selection ── */
+  var currentPane = null;
+
+  window.selectPane = function (key) {
+    var empty = document.getElementById('pipeEmpty');
+    var allPanes = document.querySelectorAll('.pipe-pane');
+    var allNodes = document.querySelectorAll('.pf-node, .pf-db-node');
+
+    allPanes.forEach(function (p) { p.classList.remove('active'); });
+    allNodes.forEach(function (n) {
+      if (n.getAttribute('data-pane') === key) n.classList.add('active');
+      else n.classList.remove('active');
+    });
+
+    var target = document.getElementById('pane-' + key);
+    if (target) {
+      target.classList.add('active');
+      if (empty) empty.style.display = 'none';
+    }
+    currentPane = key;
+  };
+
+})();
+</script>
 
 </body>
 </html>
