@@ -6,19 +6,27 @@ Exposes three tools:
   register_lookup(name, chip_part)        — deterministic SQLite register lookup
   get_figure(figure_id, chip_part)        — retrieve a figure by ID
 
-Run:
+Run (stdio — default, used by Cursor/Claude Desktop via mcp.json):
   python -m app.mcp_server
+
+Run (SSE — persistent HTTP server, survives IDE restarts):
+  python -m app.mcp_server --sse
+  python -m app.mcp_server --sse --host 127.0.0.1 --port 8765
 
 Inspect:
   npx @modelcontextprotocol/inspector python -m app.mcp_server
 """
+
+import argparse
+import sys
 
 from dotenv import load_dotenv
 load_dotenv()
 
 from fastmcp import FastMCP
 
-from app.retriever import search as _search, _get_vectorstore as _warmup_retriever
+from app.store import get_vectorstore as _warmup          # Fix 1+3: single warmup point
+from app.retriever import search as _search
 from app.register_tool import register_lookup as _register_lookup
 from app.figure_tool import get_figure as _get_figure
 from app.figure_server import start_figure_server, figure_url as _figure_url
@@ -28,9 +36,9 @@ mcp = FastMCP("hardware-um")
 # Start HTTP server for figure images (runs in daemon thread, port 7477)
 _FIGURE_SERVER_PORT = start_figure_server()
 
-# Eager-load the embedding model and vectorstore at startup so the first
-# tool call doesn't time out waiting for sentence-transformers to load.
-_warmup_retriever()
+# Eager-load the shared embedding model + vectorstore at startup so the first
+# tool call doesn't time out.  Both retriever and figure_tool share this instance.
+_warmup()
 
 
 @mcp.tool()
@@ -101,4 +109,19 @@ def get_figure(figure_id: str, chip_part: str) -> dict | None:
 
 
 if __name__ == "__main__":
-    mcp.run()  # stdio transport by default
+    parser = argparse.ArgumentParser(description="Hardware UM MCP Server")
+    parser.add_argument(
+        "--sse",
+        action="store_true",
+        help="Run as persistent SSE/HTTP server instead of stdio (survives IDE restarts)",
+    )
+    parser.add_argument("--host", default="127.0.0.1", help="SSE host (default: 127.0.0.1)")
+    parser.add_argument("--port", type=int, default=8765, help="SSE port (default: 8765)")
+    args = parser.parse_args()
+
+    if args.sse:
+        print(f"Starting Hardware UM MCP server (SSE) on http://{args.host}:{args.port}/sse")
+        print("Add to mcp.json:  { \"url\": \"http://" + args.host + ":" + str(args.port) + "/sse\" }")
+        mcp.run(transport="sse", host=args.host, port=args.port)
+    else:
+        mcp.run()  # stdio — default for Cursor / Claude Desktop

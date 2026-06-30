@@ -1,0 +1,235 @@
+id,question,expected_answer,expected_tool,expected_section,expected_page_range,expected_register,expected_figure_id
+q001,What register is used for alarm comparison of the year value in the RTC module?,"[§23. Realtime Clock (RTC) > §23.2 Register Descriptions > §23.2.17 RYRAR : Year Alarm Register (in Calendar Count Mode) > RYRAR] bits 7 | ENB | R/W | reset  | ENB
+0: Do not compare register va",register_lookup,§23.,696-696,RYRAR,
+q002,What is the reset value of MCTL_RX[j]?,[§31. Controller Area Network (CAN) Module > §31.2 Register Descriptions > §31.2.10 MCTL_RX[j] : Message Control Register for Receive (j = 0 to 31) > MCTL_RX[j]] bits 0 | NEWDATA | R/W | reset  | Rece,register_lookup,§31.,1201-1201,MCTL_RX[j],
+q003,What is the reset value of OSTDCR?,[§8. Clock Generation Circuit > §8.2 Register Descriptions > §8.2.18 OSTDCR : Oscillation Stop Detection Control Register > OSTDCR] bits 0 | OSTDIE | R/W | reset  | Oscillation Stop Detection Interrup,register_lookup,§8.,162-162,OSTDCR,
+q004,What is the correct sequence of register operations required to perform a read from SD_BUF0 in the SDHI card detection interface?,"See Figure 36.6: [§36. SD/MMC Host Interface (SDHI) > §36.3 Operation > §36.3.2 Card Detect/Write Protect > §36.3.2.1 Card Detection > Figure 36.6] Figure 36.6
+Read fr",get_figure,§36.,1502-1502,,Figure 36.6
+q005,What is the register index range for the Time Capture Control Register (RTCCRn) in the Realtime Clock module?,"[§23. Realtime Clock (RTC) > §23.2 Register Descriptions > §23.2.29 RTCCRn : Time Capture Control Register n (n = 0 to 2)] R01UH0890EJ0160 Rev.1.60
+Mar 27, 2026
+Page 705 of 1907",search_um,§23.,705-705,,
+q006,What is the reset value of SPMR?,"[§29. Serial Communications Interface (SCI) > §29.2 Register Descriptions > §29.2.28 SPMR : SPI Mode Register > SPMR] bits 0 | SSE | R/W*1 | reset  | SSn Pin Function Enable
+0: Disable SSn pin functio",register_lookup,§29.,952-952,SPMR,
+q007,"When performing a 32-bit page read access to a 16-bit bus space in the CS area with n ranging from 0 to 7, how many bus cycles are required and how are the upper and lower 16-bit words mapped to the 32-bit data bus?","See Figure 14.19: [§14. Buses > §14.5 Operation of CS Area Controller > §14.5.1 Separate Bus > Figure 14.19] Figure 14.19
+Example of page read access operation when 16-",get_figure,§14.,336-336,,Figure 14.19
+q008,What is the address of RDAYCNT?,"[§23. Realtime Clock (RTC) > §23.2 Register Descriptions > §23.2.7 RDAYCNT : Day Counter > RDAYCNT] bits 2:0 | DAYW[2:0] | R/W | reset  | Day-of-Week Counting
+0 0 0:
+Sunday
+0 0 1: Monday
+0 1 0:
+Tuesda",register_lookup,§23.,690-690,RDAYCNT,
+q009,Under what conditions should the bit modulation function not be used in clock synchronous mode and simple SPI mode?,"[§29. Serial Communications Interface (SCI) > §29.11 Extended Serial Mode Control Section: Description of Operation > §29.11.1 Serial Transfer Protocol] internal base clock.
+Do not use this function i",search_um,§29.,1077-1077,,
+q010,What is the reset value of CSnREC?,[§14. Buses > §14.3 Register Descriptions > §14.3.4 CSnREC : CSn Recovery Cycle Register (n = 0 to 7) > CSnREC] bits 7:6 | — | R/W | reset  | These bits are read as 0. The write value should be 0.,register_lookup,§14.,307-307,CSnREC,
+q011,"In continuous scan mode with AN000 and the temperature sensor output selected in group scan configuration, what is the sequence of conversions performed and how does the ADC12 handle the repeat of the scan cycle?","See Figure 40.15: [§40. 12-Bit A/D Converter (ADC12) > §40.3 Operation > §40.3.4 Group Scan Mode > §40.3.4.1 Basic Operation > Figure 40.15] Figure 40.15
+Example basic ",get_figure,§40.,1601-1601,,Figure 40.15
+q012,Which register bit must be set to 1 to enable XIP mode in serial flash memory?,"[§33. Quad Serial Peripheral Interface (QSPI) > §33.8 XIP Control > §33.8.1 Setting XIP Mode] • Selection of number of dummy cycles (8 cycles of QSPCLK)
+Figure 33.35
+XIP mode control data
+33.8.1
+Setti",search_um,§33.,1352-1352,,
+q013,What section should be referenced for the procedures for setting the operating modes associated with flash memory?,"[§47. Flash Memory > §47.6 Operating Modes Associated with Flash Memory] RA6M4 User's Manual
+47. Flash Memory
+CM33
+(CPU)
+EDMAC
+C-AHB
+32-bit
+S-AHB
+32-bit
+BUS
+FHBIU
+PSBIU
+32-bit
+FCACHE
+Register
+access
+3",search_um,§47.,1731-1731,,
+q014,What is the address of MRWCSR?,[§34. Octa Serial Peripheral Interface (OSPI) > §34.2 Register Descriptions > §34.2.17 MRWCSR : Memory Map Read/Write Setting Register > MRWCSR] bits 2:0 | MRAL0[2:0] | R/W | reset  | Device 0 read ad,register_lookup,§34.,1378-1378,MRWCSR,
+q015,What is the address of TRCKCR?,"[§8. Clock Generation Circuit > §8.3 Main Clock Oscillator > §8.3.1 Connecting a Crystal Resonator > TRCKCR] bits 3:0 | TRCK[3:0] | R/W | reset  | Trace Clock Operating Frequency Select
+0x0:
+/1
+0x1:
+/",register_lookup,§8.,173-173,TRCKCR,
+q016,What bits are reserved in DVSTCTR0?,"[§28. USB 2.0 Full-Speed Module (USBFS) > §28.2 Register Descriptions > §28.2.3 DVSTCTR0 : Device State Control Register 0 > DVSTCTR0] bits 2:0 | RHST[2:0] | R | reset  | USB Bus Reset Status
+0 0 0:
+I",register_lookup,§28.,807-807,DVSTCTR0,
+q017,Which register should be read to check the bus master that caused a bus transfer error in the EDMAC?,"[§27. Ethernet DMA Controller (EDMAC) > §27.3 Operation > §27.3.5 Bus Transfer Error] MPU error can be output as NMI. When ETHER_EINT0 and NMI are generated, NMI always responds first. Figure 27.9
+and",search_um,§27.,798-799,,
+q018,What bits are reserved in ECCOAD?,"[§45. SRAM > §45.3 Operation > §45.3.1 Module Stop Function > ECCOAD] bits 0 | TSTBYP | R/W | reset  | ECC Bypass Select
+0: Disable ECC bypass
+1:
+Enable ECC bypass",register_lookup,§45.,1693-1693,ECCOAD,
+q019,"In the QSPI prefetch function, when performing successive data read operations based on individual conversion, what happens to the SPI bus cycle timing between consecutive read accesses compared to a single isolated read?",See Figure 33.32: [§33. Quad Serial Peripheral Interface (QSPI) > §33.7 SPI Bus Cycle Arrangement > §33.7.2 Serial Flash Memory Read Using the Prefetch Function > Figur,get_figure,§33.,1349-1349,,Figure 33.32
+q020,"When the GTSECR.SPCE or GTSECR.SPCD bit is set to 1, what happens to the PCEN bit in the channels selected by the GTSECSR register?","[§21. General PWM Timer (GPT) > §21.3 Operation > §21.3.10 Period Count Function] stopped at the count clock immediately after that.
+When either GTSECR.SPCE bit or GTSECR.SPCD bit is set to 1, the PCE",search_um,§21.,632-632,,
+q021,What is the reset value of SCALCF?,"[§14. Buses > §14.8 Cache > §14.8.2 Register Description > §14.8.2.7 SCALCF : S-Cache Line Configuration Register > SCALCF] bits 0 | FS | R/W | reset  | S-Cache Flush
+Set the S-cache line flush:
+0: No",register_lookup,§14.,358-358,SCALCF,
+q022,What is the function of the RWUPE bit (bit 7) in the DVSTCTR0 register when set to 1?,"[§28. USB 2.0 Full-Speed Module (USBFS) > §28.2 Register Descriptions > §28.2.3 DVSTCTR0 : Device State Control Register 0] 1: Output USB bus reset signal
+7
+RWUPE
+Wakeup Detection Enable
+R/W
+0: Disabl",search_um,§28.,806-807,,
+q023,"In saw-wave one-shot pulse mode with down-counting and active-high configuration, at what point during the countdown does the automatic dead time setting function insert the dead time interval relative to the GPTIOCxA and GPTIOCxB output transitions?","See Figure 21.25: [§21. General PWM Timer (GPT) > §21.3 Operation > §21.3.4 Automatic Dead Time Setting Function > Figure 21.25] Figure 21.25
+Example of automatic dead ",get_figure,§21.,613-613,,Figure 21.25
+q024,Under what condition is the FERRF flag set in the CAC module?,[§9. Clock Frequency Accuracy Measurement Circuit (CAC) > §9.2 Register Descriptions > §9.2.5 CASTR : CAC Status Register] FERRF Frequency Error Flag R 0: Clock frequency is within the specified range 1: Clock frequency is outside the specified range,search_um,§9.,188-188,,
+q025,What is the reset value of NMISR?,[§13. Interrupt Controller Unit (ICU) > §13.2 Register Descriptions > §13.2.11 NMISR : Non-Maskable Interrupt Status Register > NMISR] bits 5:4 | FCLKSEL[1:0] | R/W | reset  | IRQi Digital Filter Samp,register_lookup,§13.,271-271,NMISR,
+q026,Under what condition can bits in the pipe control registers be changed?,"[§28. USB 2.0 Full-Speed Module (USBFS) > §28.3 Operation > §28.3.4 Pipe Control > §28.3.4.3 Endpoint Number] RA6M4 User's Manual
+28. USB 2.0 Full-Speed Module (USBFS)
+Table 28.19
+Pipe settings (2 of",search_um,§28.,880-880,,
+q027,What is the reset value of EESIPR?,[§27. Ethernet DMA Controller (EDMAC) > §27.2 Register Descriptions > §27.2.7 EESIPR : ETHERC/EDMAC Status Interrupt Enable Register > EESIPR] bits 0 | CERFIP | R/W | reset  | CRC Error Interrupt Requ,register_lookup,§27.,783-783,EESIPR,
+q028,What bits are reserved in RTCCRn?,"[§23. Realtime Clock (RTC) > §23.2 Register Descriptions > §23.2.29 RTCCRn : Time Capture Control Register n (n = 0 to 2) > RTCCRn] bits 1:0 | TCCT[1:0] | R/W | reset  | Time Capture Control
+0 0: Do n",register_lookup,§23.,705-705,RTCCRn,
+q029,What is the maximum time allowed to stop driving the D- line after connection is detected in host controller mode battery charging detection processing?,"[§28. USB 2.0 Full-Speed Module (USBFS) > §28.3 Operation > §28.3.15 Battery Charging Detection Processing > §28.3.15.2 Processing in Host Controller Mode] b. After connection is detected, stop drivin",search_um,§28.,900-901,,
+q030,"When SPCR2.SPPE is cleared to 0, how are the data bits arranged within the SPI frame, and what happens to the bit position that would otherwise be occupied by the parity bit?",See Figure 32.13: [§32. Serial Peripheral Interface (SPI) > §32.3 Operation > §32.3.4 Data Formats > §32.3.4.1 Operation When Parity is Disabled (SPCR2.SPPE = 0) > Figu,get_figure,§32.,1264-1264,,Figure 32.13
+q031,What is the memory address of ADBUF1 used in the Single Block to Multi Ring Buffer transfer configuration?,"[§16. DMA Controller (DMAC) > §16.3 Operation > §16.3.6 Example of Using Repeat-Block Transfer Mode > §16.3.6.3 Single Block to Multi Ring Buffer] (with incremental address)
+DMSAR
+(DMSRR)
+1st block
+tr",search_um,§16.,424-424,,
+q032,Under what condition is the PM (Parity Mode) bit valid in the SMR register?,"[§29. Serial Communications Interface (SCI) > §29.2 Register Descriptions > §29.2.11 SMR : Serial Mode Register for Non-Smart Card Interface Mode (SCMR.SMIF = 0)] 1: 2 stop bits
+4
+PM
+Parity Mode
+Valid",search_um,§29.,915-915,,
+q033,What is the reset value of SD_ERR_STS2?,[§36. SD/MMC Host Interface (SDHI) > §36.2 Register Descriptions > §36.2.18 SD_ERR_STS2 : SD Error Status Register 2 > SD_ERR_STS2] bits 15 | — | R | reset  | This bit is read as 0.,register_lookup,§36.,1493-1493,SD_ERR_STS2,
+q034,"What is the function of the CTSUTSOD bit field in the CTSUERRS register, and what are its two possible states?","[§43. Capacitive Touch Sensing Unit (CTSU) > §43.2 Register Descriptions > §43.2.20 CTSUERRS : CTSU Error Status Register] 2
+CTSUTSOD
+TS Pin Fixed Output
+R/W
+0: Capacitance measurement mode
+1: TS pins",search_um,§43.,1664-1664,,
+q035,What is the maximum bit rate achievable with a PCLK of 40 MHz when SEMR.ABCS is set to 1?,"[§29. Serial Communications Interface (SCI) > §29.2 Register Descriptions > §29.2.20 BRR : Bit Rate Register] PCLK (MHz)
+External input clock (MHz)
+SEMR.ABCS = 0
+SEMR.ABCS = 1
+8
+2.0000
+125,000
+250,000",search_um,§29.,932-940,,
+q036,What is the address of RWKAR?,"[§23. Realtime Clock (RTC) > §23.2 Register Descriptions > §23.2.13 RWKAR : Day-of-Week Alarm Register (in Calendar Count Mode) > RWKAR] bits 7 | ENB | R/W | reset  | ENB
+0: Do not compare register va",register_lookup,§23.,694-694,RWKAR,
+q037,What is the address of RFOCR?,"[§27. Ethernet DMA Controller (EDMAC) > §27.2 Register Descriptions > §27.2.14 RFOCR : Receive FIFO Overflow Counter > RFOCR] bits 0 | RNR | R/W | reset  | Receive Request Reset
+0:
+EDRRR.RR bit (recei",register_lookup,§27.,786-786,RFOCR,
+q038,How is the SDnWP signal connected to the card socket in terms of pull resistor configuration?,"[§36. SD/MMC Host Interface (SDHI) > §36.3 Operation > §36.3.2 Card Detect/Write Protect > §36.3.2.2 Write protect] Card
+detected
+Without card
+2 PCLK
+2 PCLK
+SDnDAT3 Card Insertion (SDD3IN)
+Clear
+SDnDA",search_um,§36.,1503-1503,,
+q039,What registers are included in the Factory Flash region of the RA6M4 address space?,"[§4. Address Space > §4.1 Address Space] 0x0100_A100
+Reserved area*2
+0x0100_81B4
+0x0100_80F0
+On-chip flash (Factory Flash)*3
+Reserved area*2
+0x0028_0000
+On-chip flash (code flash) 
+(read only)*1
+0x000",search_um,§4.,92-92,,
+q040,How are the USB D+ and D- I/O pins connected to the USB resume detecting unit to enable release from deep software standby mode upon detection of USB suspend/resume interrupts?,See Figure 28.7: [§28. USB 2.0 Full-Speed Module (USBFS) > §28.3 Operation > §28.3.1 System Control > §28.3.1.5 Release from Deep Software Standby Mode Because of USB ,get_figure,§28.,863-863,,Figure 28.7
+q041,What is the offset address of the SFMSDC Dummy Cycle Control Register relative to the QSPI base address?,"[§33. Quad Serial Peripheral Interface (QSPI) > §33.2 Register Descriptions > §33.2.10 SFMSDC : Dummy Cycle Control Register] RA6M4 User's Manual
+33. Quad Serial Peripheral Interface (QSPI)
+33.2.10
+SF",search_um,§33.,1327-1327,,
+q042,What is the base address of SSIE0 for the SSISCR Status Control Register?,"[§35. Serial Sound Interface Enhanced (SSIE) > §35.4 Register Descriptions > §35.4.8 SSISCR : Status Control Register] SSITXD0/
+SSIRXD0/
+SSIDATA0
+D07
+D06
+D01
+D00
+D17
+D16
+D11
+D10
+Note:
+PCLK = PCLKB
+Fig",search_um,§35.,1449-1449,,
+q043,What is the reset value of SIMR1?,"[§29. Serial Communications Interface (SCI) > §29.2 Register Descriptions > §29.2.24 SIMR1 : IIC Mode Register 1 > SIMR1] bits 0 | IICM | R/W*1 | reset  | Simple IIC Mode Select
+0:
+SCMR.SMIF = 0: Asyn",register_lookup,§29.,948-948,SIMR1,
+q044,How does the DTC transfer operation sequence proceed during a CTSU_CTSUWR interrupt to update the CTSU write registers across multiple sensor channels?,See Figure 43.19: [§43. Capacitive Touch Sensing Unit (CTSU) > §43.3 Operation > §43.3.3 Parameters Common to Multiple Modes > §43.3.3.2 Interrupts > Figure 43.19] Figu,get_figure,§43.,1678-1678,,Figure 43.19
+q045,"When the GM bit in SMR_SMCI is set to 1, what happens to the clock output on the SCKn pin if the CKE[0] bit in SCR_SMCI is changed?","[§29. Serial Communications Interface (SCI) > §29.7 Operation in Smart Card Interface Mode > §29.7.8 Clock Output Control] CKE[0] bit in SCR_SMCI is controlled.
+When the GM bit in SMR_SMCI is 0, outpu",search_um,§29.,1064-1064,,
+q046,What is the difference between Voltage Monitor 0 and Voltage Monitor 1 in terms of the detected event that triggers the LVD circuit?,"[§7. Low Voltage Detection (LVD) > §7.1 Overview] of the voltage monitor 2 interrupt and reset circuit.
+Table 7.1
+LVD specifications
+Parameter
+Voltage monitor 0
+Voltage monitor 1
+Voltage monitor 2
+Mea",search_um,§7.,124-125,,
+q047,What is the reset value of SD_CMD?,"[§36. SD/MMC Host Interface (SDHI) > §36.2 Register Descriptions > §36.2.1 SD_CMD : Command Type Register > SD_CMD] bits 5:0 | CMDIDX[5:0] | R/W | reset  | Command Index Field Value Select
+These bits",register_lookup,§36.,1475-1475,SD_CMD,
+q048,What is the address of MECR?,"[§29. Serial Communications Interface (SCI) > §29.2 Register Descriptions > §29.2.40 MECR : Manchester Extended Error Control Register > MECR] bits 0 | PFEREN | R/W | reset  | Preface Error Enable
+Spe",register_lookup,§29.,966-966,MECR,
+q049,What are the setup and hold time requirements for data valid relative to the clock edge during SPI transfer format transmission and reception in the OSPI interface?,"See Figure 50.52: [§50. Electrical Characteristics > §50.3 AC Characteristics > §50.3.12 OSPI Timing > Figure 50.52] Figure 50.52
+SPI transfer format transmission and r",get_figure,§50.,1854-1854,,Figure 50.52
+q050,What happens to the DMCRAL[15:0] block size count register after each transfer in Repeat-Block Transfer Mode?,"[§16. DMA Controller (DMAC) > §16.3 Operation > §16.3.1 Transfer Mode > §16.3.1.4 Repeat-Block Transfer Mode] address
+Not updated
+Not updated
+Not updated
+Not updated
+Not updated
+Not updated
+DMSAR
+Tran",search_um,§16.,407-411,,
+q051,What is the offset address of the RFLR (Receive Frame Maximum Length Register) for ETHERC0?,"[§26. Ethernet MAC Controller (ETHERC) > §26.2 Register Descriptions > §26.2.2 RFLR : Receive Frame Maximum Length Register] The RFLR register is used to set the maximum frame length. The default value is 1,518 bytes.",search_um,§26.,754-754,,
+q052,"In double trigger mode with duplication selected for channel x, what is the sequence of ELC_AD00 and ELC_AD10 trigger events relative to the ADC12 conversion cycles during extended operation in continuous scan mode?","See Figure 40.12: [§40. 12-Bit A/D Converter (ADC12) > §40.3 Operation > §40.3.3 Continuous Scan Mode > §40.3.3.1 Basic Operation > Figure 40.12] Figure 40.12
+Example e",get_figure,§40.,1598-1598,,Figure 40.12
+q053,"At what point in relation to the SSIF transmit FIFO level does the transmit data empty interrupt get asserted, and when is it cleared during SSIFCR operation?","See Figure 35.23: [§35. Serial Sound Interface Enhanced (SSIE) > §35.4 Register Descriptions > §35.4.3 SSIFCR : FIFO Control Register > Figure 35.23] Figure 35.23
+Timin",get_figure,§35.,1435-1435,,Figure 35.23
+q054,What is the security attribution controlled by bit PSARE22 in the PSARE register?,"[§49. Security Features > §49.6 Register Description > §49.6.4 PSARE : Peripheral Security Attribution Register E] R/W
+0: Secure
+1: Non-secure
+15
+PSARE15
+AGT4 and the MSTPCRE.MSTPE15 bit security attr",search_um,§49.,1803-1803,,
+q055,"In asynchronous mode SCI reception with FIFO enabled and Address Matching active, what is the sequence of status flag checks and register reads that the CPU must perform after an RDRF interrupt to correctly handle an address frame versus a data frame?",See Figure 29.26: [§29. Serial Communications Interface (SCI) > §29.3 Operation in Asynchronous Mode > §29.3.9 Serial Data Reception in Asynchronous Mode > Figure 29.26,get_figure,§29.,999-999,,Figure 29.26
+q056,What is the name and abbreviation of the compare match A register in the AGT module?,"[§22. Low Power Asynchronous General Purpose Timer (AGT) > §22.2 Register Descriptions > §22.2.2 AGTCMA : AGT Compare Match A Register] R01UH0890EJ0160 Rev.1.60
+Mar 27, 2026
+Page 664 of 1907",search_um,§22.,664-664,,
+q057,What is the reset value of ADADS0?,[§40. 12-Bit A/D Converter (ADC12) > §40.2 Register Descriptions > §40.2.12 ADADS0 : A/D-Converted Value Addition/Average Channel Select Register 0 > ADADS0] bits 6:0 | ANSB22 to ANSB16 | R/W | reset,register_lookup,§40.,1564-1564,ADADS0,
+q058,What value must be written to the KEY[7:0] bits when writing to the PROTECT bit of the MMPUENPTEDMAC register?,"[§15. Memory Protection Unit (MPU) > §15.3 Bus Master MPU > §15.3.1 Register Descriptions > §15.3.1.12 MMPUENPTEDMAC : MMPU Enable Protect Register for EDMAC] Note:
+It is necessary to write by half wo",search_um,§15.,375-375,,
+q059,What bits are reserved in GTCR?,"[§21. General PWM Timer (GPT) > §21.2 Register Descriptions > §21.2.12 GTCR : General PWM Timer Control Register > GTCR] bits 0 | CST | R/W | reset  | Count Start
+0: Count operation is stopped
+1: Coun",register_lookup,§21.,562-562,GTCR,
+q060,What bits are reserved in GTIOR?,"[§21. General PWM Timer (GPT) > §21.2 Register Descriptions > §21.2.14 GTIOR : General PWM Timer I/O Control Register > GTIOR] bits 4:0 | GTIOA[4:0] | R/W | reset  | GTIOCnA Pin Function Select
+See Ta",register_lookup,§21.,566-566,GTIOR,
+q061,What bits are reserved in VBTBKR[n]?,[§11. Battery Backup Function > §11.2 Register Descriptions > §11.2.5 VBTBKR[n] : VBATT Backup Register (n = 0 to 127) > VBTBKR[n]] bits 2:0 | — | R/W | reset  | These bits are read as 0. The write va,register_lookup,§11.,256-256,VBTBKR[n],
+q062,What is the reset value of ADEXICR?,[§40. 12-Bit A/D Converter (ADC12) > §40.2 Register Descriptions > §40.2.17 ADEXICR : A/D Conversion Extended Input Control Registers > ADEXICR] bits 0 | TSSAD | R/W | reset  | Temperature Sensor Outp,register_lookup,§40.,1571-1571,ADEXICR,
+q063,What is the reset value of ECCETST?,"[§45. SRAM > §45.2 Register Descriptions > §45.2.12 ECCETST : ECC Test Control Register > ECCETST] bits 0 | ECCPRCR2 | R/W | reset  | Register Write Control
+0: Disable writes to the protected register",register_lookup,§45.,1692-1692,ECCETST,
+q064,"In the SCIn extended serial mode controller block diagram, which internal signals connect the baud rate generator output to the transmit and receive shift registers?","See Figure 29.2: [§29. Serial Communications Interface (SCI) > §29.1 Overview > Figure 29.2] Figure 29.2
+SCIn (n = 1, 2) extended serial mode controller block diagram.",get_figure,§29.,908-908,,Figure 29.2
+q065,What value does the CTSURC register read when an overflow occurs during measurement of the reference ICO?,"[§43. Capacitive Touch Sensing Unit (CTSU) > §43.2 Register Descriptions > §43.2.19 CTSURC : CTSU Reference Counter] 0
+0
+0
+0
+0
+0
+0
+Bit
+Symbol
+Function
+R/W
+15:0
+CTSURC[15:0]
+CTSU Reference Counter
+Thes",search_um,§43.,1663-1663,,
+q066,"When a Group B trigger occurs during an active Group A scan with ADGSPCR.GBRSCN = 1 and ADGSPCR.GBRP = 0, does Group B complete its full scan before Group A resumes, and does Group A restart from the beginning or continue from where it was interrupted?","See Figure 40.21: [§40. 12-Bit A/D Converter (ADC12) > §40.3 Operation > §40.3.4 Group Scan Mode > §40.3.4.3 Group Priority Operation > Figure 40.21] Figure 40.21
+Examp",get_figure,§40.,1608-1608,,Figure 40.21
+q067,What happens to the SCLn clock signal when the IICCSC bit is set to 0?,"[§29. Serial Communications Interface (SCI) > §29.2 Register Descriptions > §29.2.26 SIMR3 : IIC Mode Register 3] IICCSC bit (Clock Synchronization)
+Set the IICCSC bit to 1 if the internally generated",search_um,§29.,949-950,,
+q068,What behavior does setting the IWDTRSTIRQS bit to 0 select when an underflow or refresh error occurs in the IWDT?,"[§25. Independent Watchdog Timer (IWDT) > §25.2 Register Descriptions > §25.2.3 OFS0 : Option Function Select Register 0] Figure 25.2
+IWDTRPSS[1:0] and IWDTRPES[1:0] bit settings and refresh-permitted",search_um,§25.,740-741,,
+q069,What sequence of events occurs in the SRAM TrustZone Filter protection flow when a parity error is detected and the parity interrupt is enabled?,"See Figure 45.3: [§45. SRAM > §45.3 Operation > §45.3.6 TrustZone Filter function > §45.3.6.1 TrustZone Filter for SRAM register protection > Figure 45.3] Figure 45.3
+",get_figure,§45.,1697-1697,,Figure 45.3

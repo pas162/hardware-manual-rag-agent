@@ -6,6 +6,7 @@ langchain-community
 langchain-chroma
 langchain-text-splitters
 langchain-huggingface
+langchain-openai
 sentence-transformers
 pillow
 sqlite-utils
@@ -14,4 +15,6 @@ mcp
 fastmcp
 pydantic
 python-dotenv
-openai 
+openai
+ragas>=0.2
+rapidfuzz

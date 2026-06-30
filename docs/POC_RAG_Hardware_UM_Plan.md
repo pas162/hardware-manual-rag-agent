@@ -1,8 +1,8 @@
 # POC — RAG over Hardware User Manuals (MCP Agent Interface)
 
-**Stack:** Python 3.11 · LangChain · ChromaDB · PyMuPDF · pdfplumber · OpenAI (`text-embedding-3-small`, `gpt-4o-mini`) · SQLite · FastMCP
-**Scope:** 1–2 PDF UMs (start with `r01uh0890ej0150-ra6m4.pdf`), English only, read-only, local machine
-**Timeline:** ~2 weeks, one engineer, no GPU
+**Stack:** Python 3.11 · LangChain · ChromaDB · PyMuPDF · pdfplumber · sentence-transformers (`all-MiniLM-L6-v2`) · SQLite · FastMCP
+**Scope:** 1–2 PDF UMs (RA6M4 Rev.1.60 complete), English only, read-only, local machine
+**Status:** Complete — 94% eval pass rate
 
 ---
 
@@ -28,32 +28,46 @@ A local MCP server that exposes three tools — `search_um`, `register_lookup`, 
 |---|---|---|
 | `search_um` | ChromaDB | Top-k cited chunks (prose, register rows, figures) |
 | `register_lookup` | SQLite | Exact register record: address, reset value, bit fields |
-| `get_figure` | ChromaDB | Figure record: caption, VLM summary, image path |
+| `get_figure` | ChromaDB + disk | Figure record: caption, base64 image, section path, page |
 
-### Success Criteria
+### Current Eval Results
 
-- ≥ 80% pass on 40-question golden set (tools called directly, no agent in the loop)
-- All returned chunks include a pre-formatted `【DOC | § | p】` citation
-- `register_lookup` never returns hallucinated data — SQLite only
-- Tool returns refusal string (not empty chunks) when similarity < 0.30
-- VLM cost < $5 for one full UM
+| Tool | Pass rate |
+|---|---|
+| `register_lookup` | 100% (24/24) |
+| `get_figure` | 100% (15/15) |
+| `search_um` | 87% (26/30) |
+| **Overall** | **94% (65/69)** |
+
+### Running the System
+
+```bash
+# Ingest (one-shot, ~10-20 min on first run)
+python -m ingest.run_all
+
+# Run eval
+python -m eval.run
+
+# Start MCP server (used by IDE agent)
+python -m app.mcp_server
+```
 
 ### Task Sequence
 
 ```
-Task 0   Repo bootstrap
-Task 1   Register the UM (registry.json)
-Task 2   Parse text + TOC
-Task 3   Detect register tables
-Task 4   Build register schema + SQLite
-Task 5   Extract figures + VLM captions
-Task 6   Chunking (prose / register_row / figure)
-Task 7   Embed + index in Chroma
-Task 8   Register lookup tool
-Task 9   Retriever + figure tool
-Task 10  MCP server (search_um, register_lookup, get_figure)
-Task 11  Golden set & smoke eval
-Task 12  Second UM smoke test  ← stretch goal
+Task 0   Repo bootstrap                         ✅
+Task 1   Register the UM (registry.json)        ✅
+Task 2   Parse text + TOC                       ✅
+Task 3   Detect register tables                 ✅
+Task 4   Build register schema + SQLite         ✅  511 registers · 3,303 bit fields
+Task 5   Extract figures                        ✅
+Task 6   Chunking (prose/register_row/figure)   ✅
+Task 7   Embed + index in Chroma                ✅
+Task 8   Register lookup tool                   ✅
+Task 9   Retriever + figure tool                ✅
+Task 10  MCP server                             ✅
+Task 11  Golden set & smoke eval                ✅  94% pass rate (65/69)
+Task 12  Second UM smoke test                   ⬜ stretch goal
 ```
 
 See [POC_RAG_Tasks.md](POC_RAG_Tasks.md) for full actions and checkpoints.

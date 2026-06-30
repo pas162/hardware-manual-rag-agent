@@ -9,15 +9,23 @@ import json
 import sqlite3
 from pathlib import Path
 
+from app.store import get_registry
+
 _ROOT = Path(__file__).resolve().parent.parent
 _DB_PATH = _ROOT / "data/store/registers.db"
-_REGISTRY_PATH = _ROOT / "data/registry.json"
+
+# ── SQLite connection singleton ───────────────────────────────────────────────
+
+_con: sqlite3.Connection | None = None
 
 
-def _load_registry() -> dict[str, dict]:
-    """Return dict keyed by chip_part."""
-    registry = json.loads(_REGISTRY_PATH.read_text())
-    return {r["chip_part"]: r for r in registry}
+def _get_connection(db_path: Path = _DB_PATH) -> sqlite3.Connection:
+    """Return a cached SQLite connection, opening it on first call."""
+    global _con
+    if _con is None:
+        _con = sqlite3.connect(str(db_path), check_same_thread=False)
+        _con.row_factory = sqlite3.Row
+    return _con
 
 
 def _make_citation(doc_id: str, revision: str, section_path: str, page: int) -> str:
@@ -30,7 +38,7 @@ def register_lookup(name: str, chip_part: str, db_path: Path = _DB_PATH) -> list
     Searches both exact match and LIKE '{name}%' to handle indexed variants (e.g. IELSRn).
     Returns [] for unknown names.
     """
-    registry = _load_registry()
+    registry = get_registry()
     doc_info = registry.get(chip_part)
     if doc_info is None:
         return []
@@ -41,8 +49,7 @@ def register_lookup(name: str, chip_part: str, db_path: Path = _DB_PATH) -> list
     if not db_path.exists():
         return []
 
-    con = sqlite3.connect(str(db_path))
-    con.row_factory = sqlite3.Row
+    con = _get_connection(db_path)
     cur = con.cursor()
 
     # Try exact match first, then prefix match
@@ -98,12 +105,10 @@ def register_lookup(name: str, chip_part: str, db_path: Path = _DB_PATH) -> list
             "citation": _make_citation(doc_id, revision, section_path, page),
         })
 
-    con.close()
     return results
 
 
 if __name__ == "__main__":
-    # Quick smoke test
     import sys
 
     name = sys.argv[1] if len(sys.argv) > 1 else "SCKCR"

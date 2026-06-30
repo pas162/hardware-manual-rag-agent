@@ -2,40 +2,16 @@
 Chroma-backed semantic retriever with similarity threshold guard and citation attachment.
 """
 
-import json
 from pathlib import Path
 
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 
+from app.store import get_vectorstore, get_registry
+
 _ROOT = Path(__file__).resolve().parent.parent
-_COLLECTION_NAME = "hardware_um"
-_CHROMA_DIR = _ROOT / "data/store/chroma"
-_REGISTRY_PATH = _ROOT / "data/registry.json"
 _SIMILARITY_THRESHOLD = 0.30
 _DEFAULT_K = 6
 _MAX_K = 10
-
-_EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-
-_vectorstore: Chroma | None = None
-
-
-def _get_vectorstore() -> Chroma:
-    global _vectorstore
-    if _vectorstore is None:
-        embeddings = HuggingFaceEmbeddings(model_name=_EMBED_MODEL)
-        _vectorstore = Chroma(
-            collection_name=_COLLECTION_NAME,
-            embedding_function=embeddings,
-            persist_directory=str(_CHROMA_DIR),
-        )
-    return _vectorstore
-
-
-def _load_registry() -> dict[str, dict]:
-    registry = json.loads(_REGISTRY_PATH.read_text())
-    return {r["chip_part"]: r for r in registry}
 
 
 def search(query: str, chip_part: str, top_k: int = _DEFAULT_K) -> list[dict] | str:
@@ -45,7 +21,7 @@ def search(query: str, chip_part: str, top_k: int = _DEFAULT_K) -> list[dict] | 
     score is below the threshold.
     """
     top_k = min(top_k, _MAX_K)
-    registry = _load_registry()
+    registry = get_registry()
     if chip_part not in registry:
         doc_info = next(iter(registry.values()))
     else:
@@ -53,7 +29,7 @@ def search(query: str, chip_part: str, top_k: int = _DEFAULT_K) -> list[dict] | 
 
     revision = doc_info["revision"]
 
-    vs = _get_vectorstore()
+    vs = get_vectorstore()
     # similarity_search_with_score returns (Document, score) pairs
     # Chroma cosine distance: lower = more similar (0 = identical)
     results_with_score = vs.similarity_search_with_score(

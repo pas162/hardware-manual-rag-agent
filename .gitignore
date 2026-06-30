@@ -30,6 +30,7 @@ data/registry.json
 # Evaluation / benchmark outputs
 eval_output/
 eval_camelot.py
+.eval_cache.db
 
 # OS
 .DS_Store

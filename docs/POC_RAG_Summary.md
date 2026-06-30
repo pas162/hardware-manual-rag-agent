@@ -40,7 +40,7 @@ PDF ──▶ parse (text + tables + figures) ──▶ embed ──▶ ChromaDB
 Three tools, one local server:
 - **`search_um`** — semantic search over prose + figures, returns cited chunks
 - **`register_lookup`** — deterministic exact lookup by register name from SQLite
-- **`get_figure`** — retrieve a figure by ID with image path and VLM caption
+- **`get_figure`** — retrieve a figure by ID with base64-encoded image and VLM caption
 
 ## Key Design Choices
 
@@ -49,26 +49,30 @@ Three tools, one local server:
 | MCP server as primary interface | Agent calls tools mid-conversation — no context-switching, no separate UI |
 | SQLite for registers | Eliminates the #1 hallucination risk — wrong addresses / reset values |
 | Single Chroma collection (prose + register_row + figure) | One retrieval hop, simpler filtering |
-| Citation validator in tool response | Every chunk returned already carries `【DOC | § | p】` — the agent can't lose it |
+| Citation baked into tool response | Every chunk returned already carries `【DOC | § | p】` — the agent can't lose it |
 | Similarity threshold (< 0.30 → refusal string) | Tool returns a refusal message rather than low-confidence chunks |
-| VLM one-shot per figure, SHA-256 cache | Figures are searchable without a multimodal retriever |
+| Local sentence-transformers embeddings (`all-MiniLM-L6-v2`) | Fully offline — no OpenAI API call at serve-time |
+| HTTPS figure server (port 7477, self-signed cert) | Serves figure PNGs to agent via URL; base64 fallback for MCP |
 | Local-only for POC | No server, no auth, no cloud cost — runs on developer's machine |
 
 ## Stack
 
-Python 3.11 · LangChain · ChromaDB · PyMuPDF · pdfplumber · OpenAI (`gpt-4o-mini`, `text-embedding-3-small`) · SQLite · **MCP SDK (`mcp` / `fastmcp`)**
+Python 3.11 · LangChain · ChromaDB · PyMuPDF · pdfplumber · sentence-transformers (`all-MiniLM-L6-v2`) · SQLite · **FastMCP**
+
+LLM endpoint (internal Databricks proxy, only needed for test-set generation): `databricks-claude-sonnet-4-6`
 
 ## MCP Tool Signatures
 
 ```python
-search_um(query: str, chip_part: str, top_k: int = 6) -> list[Chunk]
+search_um(query: str, chip_part: str, top_k: int = 6) -> list[Chunk] | dict
 # Returns top-k chunks with section_path, page, render_text, citation string
+# Returns {"refusal": "..."} when similarity < 0.30
 
 register_lookup(name: str, chip_part: str) -> list[RegisterRecord]
 # Returns full register record(s): address, reset, bit_fields, section, page
 
-get_figure(figure_id: str, chip_part: str) -> FigureRecord
-# Returns figure caption, VLM summary, image_path, section_path, page
+get_figure(figure_id: str, chip_part: str) -> FigureRecord | None
+# Returns figure caption, VLM summary, image as base64 data URI, section_path, page
 ```
 
 ## Scope
@@ -79,36 +83,37 @@ get_figure(figure_id: str, chip_part: str) -> FigureRecord
 | Prose Q&A via `search_um` | Code generation / FSP driver config |
 | Register lookup via `register_lookup` | Multi-UM cross-synthesis |
 | Figure recall via `get_figure` | ColPali-style multimodal retrieval |
-| Claude Desktop + VS Code Copilot demo | Eval harness, scaling, GPU |
+| Claude Desktop + VS Code Copilot demo | GPU-accelerated embedding |
+
+## Current State
+
+- **Document indexed:** RA6M4 User's Manual Rev.1.60 (`R01UH0890EJ0160`)
+- **Registers in SQLite:** 511 registers · 3,303 bit fields
+- **Eval:** 69-question golden set · **94% pass rate** (65/69)
+  - `register_lookup`: 100% pass
+  - `get_figure`: 100% pass
+  - `search_um`: 4 failures (3× `wrong_page`, 1× `wrong_section`)
 
 ## Deliverables
 
 - MCP server (`app/mcp_server.py`) runnable as a local process
-- `claude_desktop_config.json` snippet and VS Code MCP extension config for demo setup
-- Ingestion pipeline (one-shot, ~2 hrs on a laptop)
-- 40-question golden set + smoke eval script (calls MCP tools directly)
+- `.mcp.json` config for VS Code / RICA IDE integration
+- Ingestion pipeline (`python -m ingest.run_all`, one-shot)
+- 69-question golden set (`eval/golden_set_v2.csv`) + eval runner (`eval/run.py`)
 - All tool responses carry `【DOC | § | p】` citations
 
-## Success Criteria
+## Running the System
 
-- Agent (Claude Desktop or Copilot) can answer prose, register, and figure questions using only the MCP tools — no external knowledge needed
-- ≥ 80% pass rate on 40-question golden set
-- `register_lookup` returns verbatim register data — zero hallucinated addresses or bit values
-- Tool returns a refusal string (never empty chunks) when similarity < 0.30
-- VLM captioning cost < $5 for one full UM
+```bash
+# 1. Ingest (one-shot, ~10-20 min)
+python -m ingest.run_all
 
-## Demo Flow (on developer's machine)
+# 2. Run eval
+python -m eval.run
 
-1. Run ingestion once: `python -m ingest.run`
-2. Start MCP server: `python -m app.mcp_server`
-3. Open Claude Desktop (or Copilot Chat) — UM tools appear automatically
-4. Ask: *"What does the SCKCR register control?"* → agent calls `register_lookup`, returns cited answer
-5. Ask: *"Show me the clock generation block diagram"* → agent calls `get_figure`, returns caption + image path
-6. Ask: *"How do I configure AGT in one-shot mode?"* → agent calls `search_um`, returns cited prose chunks
-
-## Timeline
-
-~2 weeks, one engineer, no GPU required, local machine only.
+# 3. Start MCP server (used by IDE agent)
+python -m app.mcp_server
+```
 
 ---
 
