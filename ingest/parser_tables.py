@@ -15,7 +15,7 @@ from pathlib import Path
 import camelot
 import fitz  # PyMuPDF — used only to get page height for bbox conversion
 
-REGISTER_HEADER_KEYWORDS = {"symbol", "value", "r/w", "reset", "description", "function"}
+REQUIRED_REGISTER_COLUMNS = {"bit", "symbol", "function", "r/w"}
 _RE_BIT_CELL = re.compile(r"^bit\b", re.IGNORECASE)
 _RE_TABLE_TITLE = re.compile(r"^Table\s+\d+\.\d+", re.IGNORECASE)
 _RE_REG_NAME_HEADING = re.compile(r"\b([A-Z][A-Z0-9_]{2,}(?:n|m)?)\s*(?::|Register|Reg\.?)")
@@ -99,13 +99,13 @@ def _build_header(df, header_end: int) -> list[str]:
 # ---------------------------------------------------------------------------
 
 def _is_register_header(header: list[str]) -> bool:
-    """Return True if this looks like a register bit-field table."""
-    cells_lower = {c.lower() for c in header if c}
-    has_bit = any(_RE_BIT_CELL.match(c) for c in header if c)
-    if not has_bit:
-        return False
-    other = sum(1 for kw in REGISTER_HEADER_KEYWORDS if any(kw in cell for cell in cells_lower))
-    return other >= 1
+    """Return True only for canonical register bit-field tables.
+
+    Expected logical columns in the RA6M4 UM:
+      Bit | Symbol | Function | R/W
+    """
+    cells_lower = {c.lower().strip() for c in header if c}
+    return REQUIRED_REGISTER_COLUMNS.issubset(cells_lower)
 
 
 # ---------------------------------------------------------------------------
@@ -256,9 +256,6 @@ def parse_tables(
                     cells = [str(c).strip() for c in row]
                     if any(cells):
                         d = dict(zip(header, cells))
-                        # Normalise "Function" column → also store as "Description"
-                        if "Function" in d and "Description" not in d:
-                            d["Description"] = d["Function"]
                         data_rows.append(d)
 
                 # Extract table title from first row if it looks like "Table X.Y ..."
@@ -271,17 +268,15 @@ def parse_tables(
                 if not is_register:
                     if not data_rows and not table_title:
                         continue
-                    if len(header) <= 1:
-                        continue
                     if len(data_rows) < 2 and not table_title:
                         continue
 
+                reg_name = ""
+                peripheral = ""
                 if is_register:
                     reg_name, peripheral = _extract_register_name(section_path, blocks)
-                else:
-                    reg_name, peripheral = "", ""
 
-                record = {
+                rec = {
                     "page": pn,
                     "table_idx": table_idx,
                     "section_path": section_path,
@@ -292,42 +287,26 @@ def parse_tables(
                     "header": header,
                     "rows": data_rows,
                 }
-                fout.write(json.dumps(record, ensure_ascii=False) + "\n")
+                fout.write(json.dumps(rec, ensure_ascii=False) + "\n")
                 count += 1
 
     return count
 
 
 if __name__ == "__main__":
-    registry_path = Path("data/registry.json")
-    registry = json.loads(registry_path.read_text())
-    doc_info = registry[0]
-
-    pdf_path = Path(doc_info["path"])
+    pdf_path = Path("data/pdfs/r01uh0890ej0160-ra6m4.pdf")
     output_path = Path("data/parsed/tables.jsonl")
+    pages_jsonl = Path("data/parsed/pages.jsonl")
+    figures_jsonl = Path("data/parsed/figures.jsonl")
 
     print(f"Scanning {pdf_path} for tables (camelot lattice) ...")
     n = parse_tables(
         pdf_path,
         output_path,
-        pages_jsonl=Path("data/parsed/pages.jsonl"),
-        figures_jsonl=Path("data/parsed/figures.jsonl"),
+        pages_jsonl=pages_jsonl,
+        figures_jsonl=figures_jsonl,
     )
     print(f"Found {n} tables -> {output_path}")
 
     # Checkpoint: spot-check known registers
-    known = {"sckcr", "ielsr", "pcntr1"}
-    found_known: dict[str, list[int]] = {k: [] for k in known}
-    with output_path.open(encoding="utf-8") as f:
-        for line in f:
-            t = json.loads(line)
-            header_str = " ".join(t.get("header", [])).lower()
-            rows_text = json.dumps(t.get("rows", [])).lower()
-            for kw in known:
-                if kw in header_str or kw in rows_text:
-                    found_known[kw].append(t["page"])
-
     print(f"\nCheckpoint: {n} tables")
-    for kw, pages in found_known.items():
-        status = "FOUND" if pages else "NOT FOUND"
-        print(f"  {kw.upper()}: {status} on pages {pages[:5]}")

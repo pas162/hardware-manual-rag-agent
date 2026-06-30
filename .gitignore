@@ -34,3 +34,10 @@ eval_camelot.py
 # OS
 .DS_Store
 Thumbs.db
+
+.playwright-mcp
+.rica
+
+refresh_pipeline.cmd
+
+.mcp.json

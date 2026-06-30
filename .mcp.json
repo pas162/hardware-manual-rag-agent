@@ -1,5 +1,9 @@
 {
   "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["@playwright/mcp@latest", "--browser", "msedge"]
+    },
     "hardware-um": {
       "command": "C:\\Son\\9_Tasks\\AI_POC\\.venv\\Scripts\\python.exe",
       "args": ["-m", "app.mcp_server"],

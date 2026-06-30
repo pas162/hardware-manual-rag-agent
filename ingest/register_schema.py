@@ -138,7 +138,10 @@ def _parse_bit_field_rows(rows: list[dict]) -> list[dict]:
         symbol = norm.get("symbol", norm.get("bit name", norm.get("name", "")))
         access = norm.get("r/w", norm.get("access", ""))
         reset = norm.get("reset", norm.get("value", ""))
-        description = norm.get("description", norm.get("desc", ""))
+        # PDF register tables use the column name "Function".
+        # We store it in the existing SQLite column named "description"
+        # to preserve compatibility with the rest of the code.
+        description = norm.get("function", norm.get("description", norm.get("desc", "")))
         if not bits and not symbol:
             continue
         fields.append({
