@@ -119,6 +119,8 @@ Agent receives tool results → reasons → answers developer's question
 | Single Chroma collection (all 3 types) | One retrieval hop, simpler metadata filtering |
 | Citations baked into tool responses | Every returned chunk already carries `【DOC | § | p】` — the agent can't lose them |
 | Similarity threshold enforced at tool level | Returns a refusal dict rather than low-confidence chunks |
+| Hybrid BM25 + dense retrieval (RRF) | BM25 exact-keyword ranking merged with dense semantic ranking — prevents dense-embedding collisions (e.g. SSISCR vs SSICR) |
+| Front-matter / TOC chunks excluded from index | §Contents, §Preface etc. indexed as noise before fix — now filtered at embed time |
 | HTTPS figure server (port 7477) | Serves figure PNGs for vision-capable agents; base64 fallback in MCP response |
 
 ### 2.3 Agent Configuration
@@ -414,10 +416,10 @@ Calls MCP tools directly (no agent in the loop). Scores pass/fail per question, 
 
 | Metric | Target | Current |
 |---|---|---|
-| Golden set pass rate | ≥ 80% | **94%** (65/69) |
+| Golden set pass rate | ≥ 80% | **100%** (69/69) |
 | `register_lookup` pass rate | 100% | **100%** |
 | `get_figure` pass rate | ≥ 90% | **100%** |
-| `search_um` pass rate | ≥ 75% | **89%** (26/30 — 4 wrong_page/wrong_section) |
+| `search_um` pass rate | ≥ 75% | **100%** (30/30) |
 
 ### 7.4 Failure Categories
 

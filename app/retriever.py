@@ -1,70 +1,155 @@
 """
-Chroma-backed semantic retriever with similarity threshold guard and citation attachment.
+Hybrid retriever: dense (Chroma) + sparse (BM25) with Reciprocal Rank Fusion.
+
+Dense search finds semantically similar chunks; BM25 boosts exact keyword matches.
+RRF merges both ranked lists without requiring score normalisation.
 """
 
+import json
 from pathlib import Path
 
-from langchain_chroma import Chroma
+from rank_bm25 import BM25Okapi
 
 from app.store import get_vectorstore, get_registry
 
 _ROOT = Path(__file__).resolve().parent.parent
+_CHUNKS_JSONL = _ROOT / "data/parsed/chunks.jsonl"
 _SIMILARITY_THRESHOLD = 0.30
 _DEFAULT_K = 6
 _MAX_K = 10
+_CANDIDATE_K = 20   # candidates fetched from each retriever before RRF merge
+_RRF_K = 60         # RRF constant — higher = gentler rank penalty
+
+# ── BM25 index (built once per process) ──────────────────────────────────────
+
+_bm25: BM25Okapi | None = None
+_bm25_docs: list[dict] | None = None   # parallel list of chunk dicts
+
+
+def _get_bm25(chip_part: str) -> tuple["BM25Okapi", list[dict]]:
+    """Return (BM25 index, ordered chunk list) for the given chip_part, built lazily."""
+    global _bm25, _bm25_docs
+    if _bm25 is None:
+        chunks = []
+        with _CHUNKS_JSONL.open(encoding="utf-8") as f:
+            for line in f:
+                c = json.loads(line)
+                # Skip noise sections (same filter as indexer)
+                sec = c.get("section_path") or ""
+                top = sec.split(" > ")[0]
+                if top in {"§Contents", "§Preface", "§Notice", "§General Precautions",
+                           "§Cover", "§Revision History", "§Table of Contents"}:
+                    continue
+                chunks.append(c)
+
+        tokenised = [c["render_text"].lower().split() for c in chunks]
+        _bm25 = BM25Okapi(tokenised)
+        _bm25_docs = chunks
+
+    # Filter to chip_part at query time (cheap — just index lookup)
+    indices = [i for i, c in enumerate(_bm25_docs) if c.get("chip_part") == chip_part]
+    return _bm25, _bm25_docs, indices
+
+
+def _rrf_merge(
+    dense_ids: list[str],
+    bm25_ids: list[str],
+    id_to_chunk: dict[str, dict],
+    top_k: int,
+) -> list[dict]:
+    """Merge two ranked ID lists with Reciprocal Rank Fusion."""
+    scores: dict[str, float] = {}
+    for rank, cid in enumerate(dense_ids):
+        scores[cid] = scores.get(cid, 0.0) + 1.0 / (_RRF_K + rank + 1)
+    for rank, cid in enumerate(bm25_ids):
+        scores[cid] = scores.get(cid, 0.0) + 1.0 / (_RRF_K + rank + 1)
+
+    ranked = sorted(scores, key=lambda x: scores[x], reverse=True)
+    result = []
+    for cid in ranked[:top_k]:
+        chunk = id_to_chunk.get(cid)
+        if chunk:
+            chunk["score"] = round(scores[cid], 4)
+            result.append(chunk)
+    return result
 
 
 def search(query: str, chip_part: str, top_k: int = _DEFAULT_K) -> list[dict] | str:
-    """Semantic search over the UM vector store.
+    """Hybrid BM25 + dense search over the UM vector store.
 
-    Returns a list of chunk dicts, or a refusal string when the top similarity
-    score is below the threshold.
+    Returns a list of chunk dicts, or a refusal string when no good match found.
     """
     top_k = min(top_k, _MAX_K)
-    registry = get_registry()
-    if chip_part not in registry:
-        doc_info = next(iter(registry.values()))
-    else:
-        doc_info = registry[chip_part]
+    candidate_k = max(_CANDIDATE_K, top_k * 3)
 
+    registry = get_registry()
+    doc_info = registry.get(chip_part) or next(iter(registry.values()))
     revision = doc_info["revision"]
 
+    # ── Dense retrieval ───────────────────────────────────────────────────────
     vs = get_vectorstore()
-    # similarity_search_with_score returns (Document, score) pairs
-    # Chroma cosine distance: lower = more similar (0 = identical)
-    results_with_score = vs.similarity_search_with_score(
+    dense_results = vs.similarity_search_with_score(
         query,
-        k=top_k,
+        k=candidate_k,
         filter={"chip_part": chip_part},
     )
 
-    if not results_with_score:
+    if not dense_results:
         return f"No relevant content found in {chip_part} UM Rev.{revision}."
 
-    # Chroma returns L2 distance by default; for cosine embeddings this is ~2*(1-cos_sim)
-    # Lower score = more similar. Threshold applied as: if min_score > threshold → refusal.
-    # We treat "score" here as distance; the guard fires when the BEST result is too far.
-    best_score = results_with_score[0][1]
-    if best_score > (2 * (1 - _SIMILARITY_THRESHOLD)):  # convert cosine sim threshold to L2
+    best_score = dense_results[0][1]
+    if best_score > (2 * (1 - _SIMILARITY_THRESHOLD)):
         return f"No relevant content found in {chip_part} UM Rev.{revision}."
 
-    chunks = []
-    for doc, _score in results_with_score:
+    # Build id→chunk map from dense results
+    id_to_chunk: dict[str, dict] = {}
+    dense_ids: list[str] = []
+    for doc, _score in dense_results:
         meta = doc.metadata
-        chunks.append({
-            "element_type": meta.get("element_type", ""),
-            "section_path": meta.get("section_path", ""),
-            "page": meta.get("page_start", 0),
-            "render_text": doc.page_content,
-            "peripheral": meta.get("peripheral", ""),
-            "register_name": meta.get("register_name", ""),
-            "figure_id": meta.get("figure_id", ""),
-            "image_path": meta.get("image_path", ""),
-            "citation": meta.get("citation", ""),
-            "score": round(float(_score), 4),
-        })
+        # Use citation as stable ID (unique per chunk)
+        cid = meta.get("citation", "") or doc.page_content[:80]
+        if cid not in id_to_chunk:
+            id_to_chunk[cid] = {
+                "element_type": meta.get("element_type", ""),
+                "section_path": meta.get("section_path", ""),
+                "page": meta.get("page_start", 0),
+                "render_text": doc.page_content,
+                "peripheral": meta.get("peripheral", ""),
+                "register_name": meta.get("register_name", ""),
+                "figure_id": meta.get("figure_id", ""),
+                "image_path": meta.get("image_path", ""),
+                "citation": meta.get("citation", ""),
+            }
+        dense_ids.append(cid)
 
-    return chunks
+    # ── BM25 retrieval ────────────────────────────────────────────────────────
+    bm25_index, bm25_docs, chip_indices = _get_bm25(chip_part)
+    tokens = query.lower().split()
+    all_scores = bm25_index.get_scores(tokens)
+
+    # Score only chunks belonging to this chip_part, take top candidates
+    scored = sorted(chip_indices, key=lambda i: all_scores[i], reverse=True)[:candidate_k]
+
+    bm25_ids: list[str] = []
+    for i in scored:
+        c = bm25_docs[i]
+        cid = c.get("citation", "") or c["render_text"][:80]
+        if cid not in id_to_chunk:
+            id_to_chunk[cid] = {
+                "element_type": c.get("element_type", ""),
+                "section_path": c.get("section_path", ""),
+                "page": c.get("page_start", 0),
+                "render_text": c["render_text"],
+                "peripheral": c.get("peripheral", ""),
+                "register_name": c.get("register_name", ""),
+                "figure_id": c.get("figure_id", ""),
+                "image_path": c.get("image_path", ""),
+                "citation": c.get("citation", ""),
+            }
+        bm25_ids.append(cid)
+
+    # ── RRF merge ─────────────────────────────────────────────────────────────
+    return _rrf_merge(dense_ids, bm25_ids, id_to_chunk, top_k)
 
 
 if __name__ == "__main__":

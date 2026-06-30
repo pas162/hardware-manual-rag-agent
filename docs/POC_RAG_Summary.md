@@ -89,10 +89,10 @@ get_figure(figure_id: str, chip_part: str) -> FigureRecord | None
 
 - **Document indexed:** RA6M4 User's Manual Rev.1.60 (`R01UH0890EJ0160`)
 - **Registers in SQLite:** 511 registers · 3,303 bit fields
-- **Eval:** 69-question golden set · **94% pass rate** (65/69)
+- **Eval:** 69-question golden set · **100% pass rate** (69/69)
   - `register_lookup`: 100% pass
   - `get_figure`: 100% pass
-  - `search_um`: 4 failures (3× `wrong_page`, 1× `wrong_section`)
+  - `search_um`: 100% pass
 
 ## Deliverables
 

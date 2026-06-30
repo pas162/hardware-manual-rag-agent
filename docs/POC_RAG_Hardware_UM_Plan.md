@@ -2,7 +2,7 @@
 
 **Stack:** Python 3.11 · LangChain · ChromaDB · PyMuPDF · pdfplumber · sentence-transformers (`all-MiniLM-L6-v2`) · SQLite · FastMCP
 **Scope:** 1–2 PDF UMs (RA6M4 Rev.1.60 complete), English only, read-only, local machine
-**Status:** Complete — 94% eval pass rate
+**Status:** Complete — 100% eval pass rate
 
 ---
 
@@ -36,8 +36,8 @@ A local MCP server that exposes three tools — `search_um`, `register_lookup`, 
 |---|---|
 | `register_lookup` | 100% (24/24) |
 | `get_figure` | 100% (15/15) |
-| `search_um` | 87% (26/30) |
-| **Overall** | **94% (65/69)** |
+| `search_um` | 100% (30/30) |
+| **Overall** | **100% (69/69)** |
 
 ### Running the System
 
@@ -66,7 +66,7 @@ Task 7   Embed + index in Chroma                ✅
 Task 8   Register lookup tool                   ✅
 Task 9   Retriever + figure tool                ✅
 Task 10  MCP server                             ✅
-Task 11  Golden set & smoke eval                ✅  94% pass rate (65/69)
+Task 11  Golden set & smoke eval                ✅  100% pass rate (69/69)
 Task 12  Second UM smoke test                   ⬜ stretch goal
 ```
 

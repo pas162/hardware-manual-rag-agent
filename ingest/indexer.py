@@ -15,6 +15,23 @@ from langchain_core.documents import Document
 COLLECTION_NAME = "hardware_um"
 BATCH_SIZE = 100
 
+# Front-matter and TOC sections that add noise without retrieval value
+_SKIP_SECTIONS = {
+    "§Contents",
+    "§Preface",
+    "§Notice",
+    "§General Precautions",
+    "§Cover",
+    "§Revision History",
+    "§Table of Contents",
+}
+
+
+def _is_noise_chunk(chunk: dict) -> bool:
+    sec = chunk.get("section_path") or ""
+    top_level = sec.split(" > ")[0]
+    return top_level in _SKIP_SECTIONS
+
 
 def load_chunks(chunks_jsonl: Path) -> list[dict]:
     chunks = []
@@ -53,36 +70,31 @@ def build_index(
     """Embed all chunks and persist to Chroma. Returns total documents indexed."""
     chroma_dir.mkdir(parents=True, exist_ok=True)
 
-    chunks = load_chunks(chunks_jsonl)
-    print(f"Loaded {len(chunks)} chunks")
+    all_chunks = load_chunks(chunks_jsonl)
+    chunks = [c for c in all_chunks if not _is_noise_chunk(c)]
+    skipped = len(all_chunks) - len(chunks)
+    print(f"Loaded {len(all_chunks)} chunks, skipped {skipped} noise chunks, indexing {len(chunks)}")
 
     embeddings = HuggingFaceEmbeddings(model_name=_EMBED_MODEL)
 
-    # Build in batches
+    # Create a single vectorstore instance for all batches
+    all_docs = [chunk_to_document(c) for c in chunks]
     total = 0
-    for i in range(0, len(chunks), batch_size):
-        batch = chunks[i : i + batch_size]
-        docs = [chunk_to_document(c) for c in batch]
-
-        if i == 0:
-            # Create collection on first batch
+    vectorstore = None
+    for i in range(0, len(all_docs), batch_size):
+        batch = all_docs[i : i + batch_size]
+        if vectorstore is None:
             vectorstore = Chroma.from_documents(
-                documents=docs,
+                documents=batch,
                 embedding=embeddings,
                 collection_name=COLLECTION_NAME,
                 persist_directory=str(chroma_dir),
             )
         else:
-            vectorstore = Chroma(
-                collection_name=COLLECTION_NAME,
-                embedding_function=embeddings,
-                persist_directory=str(chroma_dir),
-            )
-            vectorstore.add_documents(docs)
-
+            vectorstore.add_documents(batch)
         total += len(batch)
-        pct = total / len(chunks) * 100
-        print(f"  Indexed {total}/{len(chunks)} ({pct:.0f}%)")
+        pct = total / len(all_docs) * 100
+        print(f"  Indexed {total}/{len(all_docs)} ({pct:.0f}%)")
 
     return total
 

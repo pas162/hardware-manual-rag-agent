@@ -39,23 +39,20 @@ def _prose_chunks(
         separators=["\n\n", "\n", ". ", " ", ""],
     )
 
-    # Group blocks by section_path
-    sections: dict[str, list[dict]] = {}
+    # Group blocks by (section_path, page) so each chunk has accurate page metadata
+    sections: dict[tuple[str, int], list[dict]] = {}
     with pages_jsonl.open(encoding="utf-8") as f:
         for line in f:
             b = json.loads(line)
-            key = b.get("section_path") or "§UNKNOWN"
+            key = (b.get("section_path") or "§UNKNOWN", b["page"])
             sections.setdefault(key, []).append(b)
 
     chunks = []
-    for section_path, blocks in sections.items():
-        blocks.sort(key=lambda b: (b["page"], b["bbox"][1]))
+    for (section_path, page), blocks in sections.items():
+        blocks.sort(key=lambda b: b["bbox"][1])  # sort by y position within page
         full_text = "\n".join(b["text"] for b in blocks)
         if not full_text.strip():
             continue
-
-        page_start = blocks[0]["page"]
-        page_end = blocks[-1]["page"]
 
         for split_text in splitter.split_text(full_text):
             render_text = f"[{section_path}] {split_text}"
@@ -64,15 +61,15 @@ def _prose_chunks(
                 "revision": revision,
                 "chip_part": chip_part,
                 "section_path": section_path,
-                "page_start": page_start,
-                "page_end": page_end,
+                "page_start": page,
+                "page_end": page,
                 "element_type": "prose",
                 "peripheral": "",
                 "register_name": "",
                 "figure_id": "",
                 "image_path": "",
                 "render_text": render_text,
-                "citation": _make_citation(doc_id, revision, section_path, page_start),
+                "citation": _make_citation(doc_id, revision, section_path, page),
             })
     return chunks
 
