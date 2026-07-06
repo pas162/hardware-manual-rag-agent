@@ -6,7 +6,7 @@ Exposes three tools:
   register_lookup(name, chip_part)        — deterministic SQLite register lookup
   get_figure(figure_id, chip_part)        — retrieve a figure by ID
 
-Run (stdio — default, used by Cursor/Claude Desktop via mcp.json):
+Run (stdio — default, used by Cursor/Claude Desktop/RICA via mcp.json):
   python -m app.mcp_server
 
 Run (SSE — persistent HTTP server, survives IDE restarts):
@@ -18,27 +18,58 @@ Inspect:
 """
 
 import argparse
+import os
 import sys
+import threading
 
 from dotenv import load_dotenv
 load_dotenv()
 
 from fastmcp import FastMCP
 
-from app.store import get_vectorstore as _warmup          # Fix 1+3: single warmup point
-from app.retriever import search as _search
-from app.register_tool import register_lookup as _register_lookup
-from app.figure_tool import get_figure as _get_figure
-from app.figure_server import start_figure_server, figure_url as _figure_url
+
+def _log(msg: str) -> None:
+    """Log to stderr only — stdout is reserved for the MCP JSON-RPC stream."""
+    print(f"[hardware-um] {msg}", file=sys.stderr, flush=True)
+
 
 mcp = FastMCP("hardware-um")
 
-# Start HTTP server for figure images (runs in daemon thread, port 7477)
-_FIGURE_SERVER_PORT = start_figure_server()
+# ── Lazy, non-blocking warmup ─────────────────────────────────────────────────
+# IMPORTANT: do NOT load the embedding model or start the figure server at import
+# time.  Doing so blocks the MCP `initialize` handshake for 10-30 s and makes
+# RICA / Cursor report the server as "failed to connect" (handshake timeout).
+#
+# Instead we kick off warmup in a background thread so `mcp.run()` can answer the
+# handshake immediately, and each tool waits on the warmup only when first called.
 
-# Eager-load the shared embedding model + vectorstore at startup so the first
-# tool call doesn't time out.  Both retriever and figure_tool share this instance.
-_warmup()
+_warmup_done = threading.Event()
+_warmup_error: Exception | None = None
+_figure_server_port: int | None = None
+
+
+def _warmup_worker() -> None:
+    """Load heavy resources in the background; record any failure."""
+    global _warmup_error, _figure_server_port
+    try:
+        from app.figure_server import start_figure_server
+        from app.store import get_vectorstore
+        _figure_server_port = start_figure_server()
+        get_vectorstore()  # eager-load embeddings + Chroma once
+        _log("warmup complete — tools ready")
+    except Exception as exc:  # noqa: BLE001
+        _warmup_error = exc
+        _log(f"warmup FAILED: {exc!r}")
+    finally:
+        _warmup_done.set()
+
+
+def _ensure_ready(timeout: float = 120.0) -> None:
+    """Block the calling tool until warmup finishes (first call only)."""
+    if not _warmup_done.wait(timeout=timeout):
+        raise TimeoutError("Backend warmup did not finish in time; try again.")
+    if _warmup_error is not None:
+        raise RuntimeError(f"Backend failed to initialise: {_warmup_error!r}")
 
 
 @mcp.tool()
@@ -53,6 +84,8 @@ def search_um(query: str, chip_part: str, top_k: int = 6) -> list[dict] | dict:
         chip_part: Chip identifier, e.g. "RA6M4"
         top_k:     Number of results to return (default 6, max 10)
     """
+    _ensure_ready()
+    from app.retriever import search as _search
     result = _search(query, chip_part, top_k)
     if isinstance(result, str):
         return {"refusal": result}
@@ -70,6 +103,8 @@ def register_lookup(name: str, chip_part: str) -> list[dict]:
         name:      Register name, e.g. "SCKCR", "IELSRn"
         chip_part: Chip identifier, e.g. "RA6M4"
     """
+    _ensure_ready()
+    from app.register_tool import register_lookup as _register_lookup
     return _register_lookup(name, chip_part)
 
 
@@ -86,8 +121,11 @@ def get_figure(figure_id: str, chip_part: str) -> dict | None:
         figure_id: Figure identifier, e.g. "Figure 13.2"
         chip_part: Chip identifier, e.g. "RA6M4"
     """
+    _ensure_ready()
     import base64
     from pathlib import Path as _Path
+    from app.figure_tool import get_figure as _get_figure
+    from app.figure_server import figure_url as _figure_url
 
     result = _get_figure(figure_id, chip_part)
     if result is None:
@@ -119,9 +157,14 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=8765, help="SSE port (default: 8765)")
     args = parser.parse_args()
 
+    # Start the heavy warmup in the background so the MCP handshake responds
+    # immediately regardless of transport.
+    threading.Thread(target=_warmup_worker, daemon=True).start()
+
     if args.sse:
-        print(f"Starting Hardware UM MCP server (SSE) on http://{args.host}:{args.port}/sse")
-        print("Add to mcp.json:  { \"url\": \"http://" + args.host + ":" + str(args.port) + "/sse\" }")
-        mcp.run(transport="sse", host=args.host, port=args.port)
+        _log(f"Starting Hardware UM MCP server (SSE) on http://{args.host}:{args.port}/sse")
+        _log("Add to mcp.json:  { \"url\": \"http://" + args.host + ":" + str(args.port) + "/sse\" }")
+        mcp.run(transport="sse", host=args.host, port=args.port, show_banner=False)
     else:
-        mcp.run()  # stdio — default for Cursor / Claude Desktop
+        _log("Starting Hardware UM MCP server (stdio)")
+        mcp.run(show_banner=False)  # stdio — default for Cursor / Claude Desktop / RICA

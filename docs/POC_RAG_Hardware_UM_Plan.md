@@ -1,8 +1,9 @@
 # POC — RAG over Hardware User Manuals (MCP Agent Interface)
 
-**Stack:** Python 3.11 · LangChain · ChromaDB · PyMuPDF · pdfplumber · sentence-transformers (`all-MiniLM-L6-v2`) · SQLite · FastMCP
-**Scope:** 1–2 PDF UMs (RA6M4 Rev.1.60 complete), English only, read-only, local machine
-**Status:** Complete — 100% eval pass rate
+**Stack:** Python 3.11 · ChromaDB · sentence-transformers (`all-MiniLM-L6-v2`) · SQLite · BeautifulSoup · FastMCP
+**Scope:** RA6M4, English only, read-only, local machine
+**Data source:** Smart Manual DB — the per-chip SQLite database the Renesas Smart Manual VS Code extension keeps on disk. Registers, bit-fields, prose, and figures are all read from it directly; no PDF parsing.
+**Status:** New architecture defined — implementation in progress
 
 ---
 
@@ -11,8 +12,9 @@
 | Document | Purpose | Audience |
 |---|---|---|
 | [POC_RAG_Summary.md](POC_RAG_Summary.md) | What, why, and how in one page | Stakeholders, new team members |
-| [POC_RAG_Spec.md](POC_RAG_Spec.md) | Architecture, tool contracts, data model, module map, guardrails, eval criteria | Engineers building or reviewing the system |
+| [POC_RAG_Spec.md](POC_RAG_Spec.md) | Architecture, tool contracts, data model, module map, guardrails | Engineers building or reviewing the system |
 | [POC_RAG_Tasks.md](POC_RAG_Tasks.md) | Step-by-step implementation tasks with checkpoints | Agent or engineer executing the build |
+| [SmartManual_DB_Analysis.md](SmartManual_DB_Analysis.md) | Raw schema/content analysis of the Smart Manual DB | Reference for anyone touching the DB layer |
 
 ---
 
@@ -20,29 +22,30 @@
 
 ### What It Builds
 
-A local MCP server that exposes three tools — `search_um`, `register_lookup`, `get_figure` — so any MCP-compatible AI agent (Claude Desktop, GitHub Copilot, Cursor) can answer an embedded developer's questions about a semiconductor Hardware User Manual **without leaving their IDE**.
+A local MCP server that exposes three tools — `search_um`, `register_lookup`, `get_figure` — so any MCP-compatible AI agent (Claude Desktop, GitHub Copilot, Cursor) can answer an embedded developer's questions about a chip's Hardware User Manual **without leaving their IDE**.
+
+### Where the Data Comes From
+
+The Smart Manual VS Code extension already downloads a structured SQLite database per chip to local disk. This POC reads that database directly instead of re-parsing the PDF:
+
+| Data | Smart Manual table | How it's used |
+|---|---|---|
+| Prose | `freeWord.keyword` | Chunked + embedded into ChromaDB |
+| Figures | `<figure>`/`<svg>` blocks inside `display_data` HTML | Extracted as SVG files + figure chunks |
+| Registers & bit-fields | `registerList` / `bitList` | Queried live at request time — no import step |
 
 ### Three Tools
 
-| Tool | Storage | Returns |
+| Tool | Source | Returns |
 |---|---|---|
-| `search_um` | ChromaDB | Top-k cited chunks (prose, register rows, figures) |
-| `register_lookup` | SQLite | Exact register record: address, reset value, bit fields |
-| `get_figure` | ChromaDB + disk | Figure record: caption, base64 image, section path, page |
-
-### Current Eval Results
-
-| Tool | Pass rate |
-|---|---|
-| `register_lookup` | 100% (24/24) |
-| `get_figure` | 100% (15/15) |
-| `search_um` | 100% (30/30) |
-| **Overall** | **100% (69/69)** |
+| `search_um` | ChromaDB | Top-k cited chunks (prose, figures) |
+| `register_lookup` | Smart Manual DB (live query) | Register record: address, reset value, bit fields |
+| `get_figure` | ChromaDB + disk | Figure record: caption, SVG image, section title |
 
 ### Running the System
 
 ```bash
-# Ingest (one-shot, ~10-20 min on first run)
+# Ingest prose + figures (one-shot)
 python -m ingest.run_all
 
 # Run eval
@@ -55,19 +58,14 @@ python -m app.mcp_server
 ### Task Sequence
 
 ```
-Task 0   Repo bootstrap                         ✅
-Task 1   Register the UM (registry.json)        ✅
-Task 2   Parse text + TOC                       ✅
-Task 3   Detect register tables                 ✅
-Task 4   Build register schema + SQLite         ✅  511 registers · 3,303 bit fields
-Task 5   Extract figures                        ✅
-Task 6   Chunking (prose/register_row/figure)   ✅
-Task 7   Embed + index in Chroma                ✅
-Task 8   Register lookup tool                   ✅
-Task 9   Retriever + figure tool                ✅
-Task 10  MCP server                             ✅
-Task 11  Golden set & smoke eval                ✅  100% pass rate (69/69)
-Task 12  Second UM smoke test                   ⬜ stretch goal
+Task 0   Repo bootstrap                                ✅
+Task 1   Locate the Smart Manual DB (locator)           ⬜
+Task 2   Register lookup — live query + HTML parsing    ⬜
+Task 3   Prose ingestion (freeWord → chunks)             ⬜
+Task 4   Figure ingestion (<svg> → files + chunks)       ⬜
+Task 5   Embed + index in Chroma                         ⬜
+Task 6   MCP server (tool contracts unchanged)           ⬜
+Task 7   Update golden set + re-run eval                 ⬜
 ```
 
 See [POC_RAG_Tasks.md](POC_RAG_Tasks.md) for full actions and checkpoints.

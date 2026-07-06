@@ -10,34 +10,27 @@
 
 **Dependencies (`requirements.txt`):**
 ```
-pymupdf
-pdfplumber
 chromadb
 langchain
 langchain-community
 langchain-chroma
 langchain-text-splitters
 langchain-huggingface
-langchain-openai
 sentence-transformers
-pillow
+beautifulsoup4
 sqlite-utils
 rank_bm25
 mcp
 fastmcp
 pydantic
 python-dotenv
-openai
 ragas>=0.2
 rapidfuzz
 ```
+> PDF-specific dependencies (`pymupdf`, `pdfplumber`) are no longer required for chips that have a Smart Manual DB.
 
 **Environment (`.env`):**
 ```
-OPENAI_API_BASE=http://<proxy-host>:<port>/api   # internal Databricks proxy
-OPENAI_API_KEY=<your key>
-OPENAI_MODEL=databricks-claude-sonnet-4-6        # used only for test-set generation
-JUDGE_MODEL=databricks-gpt-5-4                   # optional, for future LLM-judge eval
 EMBED_MODEL=sentence-transformers/all-MiniLM-L6-v2
 HF_HUB_OFFLINE=1                                 # fully offline at serve-time
 ```
@@ -46,41 +39,42 @@ HF_HUB_OFFLINE=1                                 # fully offline at serve-time
 | Purpose | Model |
 |---|---|
 | Embeddings (ingest + serve) | `sentence-transformers/all-MiniLM-L6-v2` (local, offline) |
-| Test-set question generation | `databricks-claude-sonnet-4-6` (via internal proxy, ingest-only) |
 
 > No LLM call at serve-time — the calling agent provides reasoning. The MCP server returns raw retrieved data only.
 
-**Starting PDF:** `r01uh0890ej0160-ra6m4.pdf` (Renesas RA6M4 User's Manual Rev.1.60)
+**Data source:** Smart Manual DB for `RA6M4`, located at:
+```
+%APPDATA%\Code\User\globalStorage\renesaselectronicscorporation.renesas-smart-manual\downloads\RA6M4\RA6M4_en
+```
+Plain SQLite file — no fallback path. If it's missing, the tool returns an error rather than silently falling back to a PDF.
 
 ---
 
 ## 2. Architecture
 
-### 2.1 Ingestion (offline, one-shot)
+### 2.1 Ingestion (offline, one-shot — prose & figures only)
 
 ```
-PDF UM
+Smart Manual DB (SQLite: RA6M4_en)
   │
-  ├─▶ PyMuPDF ──────────────────────────────────────────────────────────────┐
-  │     text blocks, TOC, section_path resolver                             │
-  │                                                                          │
-  ├─▶ pdfplumber ────────────────────────────────────────────────────────────┤
-  │     table extraction, register-table heuristic (≥4 columns required)   │
-  │                                                                          │
-  │         ┌─────────────────────┬──────────────────────┬──────────────────┘
-  │         ▼                     ▼                      ▼
-  │    prose chunks          register tables         figure images
-  │    (500 chars, 80 overlap) → JSON records          + nearest caption
-  │                               │                       │
-  │                               ▼                       ▼
-  │                      SQLite registers.db       PNG saved to disk
-  │                               │                (data/figures/{doc_id}/)
-  │                               └──────────┬────────────┘
-  │                                          ▼
-  │                   sentence-transformers/all-MiniLM-L6-v2 (local)
-  │                                          ▼
-  └──────────────────────────────▶ ChromaDB persistent collection
+  ├─▶ freeWord.keyword ─────────────────────────────────────┐
+  │     clean plain text per section                        │
+  │                                                          │
+  ├─▶ <figure>/<svg> blocks in display_data (HTML) ──────────┤
+  │     freeWord + registerList + bitList                   │
+  │         │                                                │
+  │         ▼                                                ▼
+  │    prose chunks                                    figure chunks
+  │    (500 chars, 80 overlap)                          + SVG saved to disk
+  │         │                                            (data/figures/{chip}/)
+  │         └──────────────────┬─────────────────────────────┘
+  │                            ▼
+  │         sentence-transformers/all-MiniLM-L6-v2 (local)
+  │                            ▼
+  └──────────────────▶ ChromaDB persistent collection
 ```
+
+Registers and bit-fields are **not** part of this ingestion step — they're queried live at request time (see 2.2).
 
 Run ingestion: `python -m ingest.run_all`
 
@@ -95,15 +89,17 @@ app/mcp_server.py  ← local process on developer's machine
   │
   ├─▶ tool: search_um(query, chip_part, top_k=6)
   │     └─▶ Chroma similarity search + metadata filter
-  │           └─▶ returns: list of Chunk {section_path, page, render_text, citation}
+  │           └─▶ returns: list of Chunk {section_title, render_text, citation}
   │
   ├─▶ tool: register_lookup(name, chip_part)
-  │     └─▶ SQLite exact + prefix lookup
-  │           └─▶ returns: list of RegisterRecord {address, reset, bit_fields, citation}
+  │     └─▶ app/smart_manual_locator.py resolves DB path for chip_part
+  │           └─▶ live SQLite query against registerList/bitList
+  │                 └─▶ BeautifulSoup parses display_data HTML for R/W, reset, enum values
+  │                       └─▶ returns: list of RegisterRecord {address, reset, bit_fields, citation}
   │
   └─▶ tool: get_figure(figure_id, chip_part)
         └─▶ Chroma filter by figure_id + metadata
-              └─▶ returns: FigureRecord {caption, image as base64 data URI, section_path, page, citation}
+              └─▶ returns: FigureRecord {caption, svg as data URI, section_title, citation}
 
 Agent receives tool results → reasons → answers developer's question
 ```
@@ -112,16 +108,18 @@ Agent receives tool results → reasons → answers developer's question
 
 | Decision | Rationale |
 |---|---|
+| Smart Manual DB as the single data source | Already-structured, already-downloaded, avoids re-parsing a 1900-page PDF |
+| Registers queried live, no import step | Data is already normalized SQLite — copying it into a second DB adds no value |
+| No fallback in the locator | Keeps the tool honest about what chip data is actually available locally |
 | MCP server as sole interface | Agent calls tools mid-conversation — no UI context-switching |
 | No LLM in the server | The calling agent provides reasoning; the server provides only retrieved facts |
-| SQLite for registers | Deterministic lookup eliminates hallucinated addresses / reset values |
 | Local sentence-transformers embeddings | Fully offline at serve-time — no external API dependency |
-| Single Chroma collection (all 3 types) | One retrieval hop, simpler metadata filtering |
-| Citations baked into tool responses | Every returned chunk already carries `【DOC | § | p】` — the agent can't lose them |
+| Single Chroma collection (prose + figure) | One retrieval hop, simpler metadata filtering |
+| Citations baked into tool responses | Every returned item carries a `citation` field the agent can't lose |
 | Similarity threshold enforced at tool level | Returns a refusal dict rather than low-confidence chunks |
-| Hybrid BM25 + dense retrieval (RRF) | BM25 exact-keyword ranking merged with dense semantic ranking — prevents dense-embedding collisions (e.g. SSISCR vs SSICR) |
-| Front-matter / TOC chunks excluded from index | §Contents, §Preface etc. indexed as noise before fix — now filtered at embed time |
-| HTTPS figure server (port 7477) | Serves figure PNGs for vision-capable agents; base64 fallback in MCP response |
+| Hybrid BM25 + dense retrieval (RRF) | Prevents dense-embedding collisions between similarly named registers |
+| Figures kept as native SVG | Source figures are vector (`<svg>`) — rasterizing would lose fidelity |
+| No page numbers in citations | Smart Manual DB carries no page metadata; citations reference section titles instead |
 
 ### 2.3 Agent Configuration
 
@@ -174,15 +172,14 @@ search_um(query: str, chip_part: str, top_k: int = 6) -> list[Chunk] | dict
 Returns list of `Chunk`:
 ```json
 {
-  "element_type": "prose | register_row | figure",
-  "section_path": "§13. ICU > §13.2 Register Descriptions > §13.2.4 IELSRn",
-  "page": 283,
-  "render_text": "[§13.2.4 > IELSRn] bits 7:0 | IELS | R/W | reset 0 | Interrupt event link select",
-  "citation": "【R01UH0890EJ0160 Rev.1.60 | §13.2.4 IELSRn | p.283】"
+  "element_type": "prose | figure",
+  "section_title": "13.2.4. IELSRn : ICU Event Link Setting Register n",
+  "render_text": "[13.2.4. IELSRn] Interrupt event link select ...",
+  "citation": "【RA6M4 Smart Manual | 13.2.4. IELSRn】"
 }
 ```
 
-Returns `{"refusal": "No relevant content found in RA6M4 UM Rev.1.60."}` when top similarity score < 0.30.
+Returns `{"refusal": "No relevant content found in RA6M4 Smart Manual."}` when top similarity score < 0.30.
 
 ---
 
@@ -192,27 +189,25 @@ Returns `{"refusal": "No relevant content found in RA6M4 UM Rev.1.60."}` when to
 register_lookup(name: str, chip_part: str) -> list[RegisterRecord]
 ```
 
-Returns list (multiple records when the name is shared across peripherals):
+Returns list (multiple records when the name matches several registers, e.g. an indexed family):
 ```json
 {
-  "peripheral": "ICU",
-  "register_name": "IELSRn",
+  "peripheral": "R_ICU",
+  "register_name": "IELSR0",
   "address": "0x40006300",
-  "size_bits": 32,
-  "reset_value": "0x00000000",
   "access": "R/W",
-  "section_path": "§13. ICU > §13.2 Register Descriptions > §13.2.4 IELSRn",
-  "page": 283,
   "bit_fields": [
     {"bits": "31:9", "symbol": "—",    "access": "R",   "reset": "0", "description": "Reserved"},
     {"bits": "8",    "symbol": "IR",   "access": "R/W", "reset": "0", "description": "Interrupt status flag"},
     {"bits": "7:0",  "symbol": "IELS", "access": "R/W", "reset": "0", "description": "Interrupt event link select"}
   ],
-  "citation": "【R01UH0890EJ0160 Rev.1.60 | §13.2.4 IELSRn | p.283】"
+  "citation": "【RA6M4 Smart Manual | IELSR0 : ICU Event Link Setting Register 0】"
 }
 ```
 
-Returns `[]` for unknown names. Supports prefix matching for indexed variants (e.g. `IELSRn` matches `IELSR0`–`IELSR95`).
+Returns `[]` for unknown names. Supports prefix matching for indexed families (e.g. `IELSRn` matches `IELSR0`–`IELSR95`, each individually addressed in the Smart Manual DB).
+
+> Register names follow the Smart Manual's FSP naming convention, which can differ from the PDF (e.g. `SCKDIVCR`, not the PDF's `SCKCR`).
 
 ---
 
@@ -226,12 +221,9 @@ get_figure(figure_id: str, chip_part: str) -> FigureRecord | None
 {
   "figure_id": "Figure 13.2",
   "caption": "ICU Block Diagram",
-  "vlm_summary": "Block diagram showing the ICU peripheral ...",
-  "image_url": "https://localhost:7477/figures/R01UH0890EJ0160/p280_42.png",
-  "image_data": "data:image/png;base64,...",
-  "section_path": "§13. ICU > §13.1 Overview",
-  "page": 280,
-  "citation": "【R01UH0890EJ0160 Rev.1.60 | §13.1 Overview | p.280 | Figure 13.2】"
+  "image_svg": "<svg ...>...</svg>",
+  "section_title": "13.1. Overview",
+  "citation": "【RA6M4 Smart Manual | 13.1. Overview | Figure 13.2】"
 }
 ```
 
@@ -241,68 +233,28 @@ Returns `null` for unknown figure IDs.
 
 ## 4. Data Model
 
-### 4.1 Chunk Metadata Envelope (10 fields)
+### 4.1 Chunk Metadata Envelope
 
 | Field | Type | Description |
 |---|---|---|
-| `doc_id` | str | e.g. `R01UH0890EJ0160` |
-| `revision` | str | e.g. `1.60` |
 | `chip_part` | str | e.g. `RA6M4` |
-| `section_path` | str | Resolved from TOC, e.g. `§13. ICU > §13.2 Register Descriptions > §13.2.4 IELSRn` |
-| `page_start` | int | First page of the chunk |
-| `page_end` | int | Last page of the chunk |
-| `element_type` | str | `prose` \| `register_row` \| `figure` \| `table` |
-| `peripheral` | str | e.g. `AGT`, `SCI`, `PORT` |
-| `register_name` | str | e.g. `IELSRn`, `SCKCR` |
-| `figure_id` | str | e.g. `Figure 13.2` |
+| `section_title` | str | From `freeWord.title`, e.g. `13.2.4. IELSRn : ICU Event Link Setting Register n` |
+| `element_type` | str | `prose` \| `figure` |
+| `figure_id` | str | e.g. `Figure 13.2` (figure chunks only) |
 
-### 4.2 SQLite Schema (`data/store/registers.db`)
+No page numbers — the Smart Manual DB does not carry page metadata.
 
-**`registers` table** (511 rows for RA6M4 Rev.1.60):
-```sql
-CREATE TABLE registers (
-    peripheral    TEXT,
-    register_name TEXT,
-    address       TEXT,
-    size_bits     INTEGER,
-    reset_value   TEXT,
-    access        TEXT,
-    doc_id        TEXT,
-    revision      TEXT,
-    section_path  TEXT,
-    page_start    INTEGER,
-    page_end      INTEGER,
-    json          TEXT,
-    PRIMARY KEY (peripheral, register_name)
-);
-```
+### 4.2 Register Data (no local copy)
 
-**`bit_fields` table** (3,303 rows for RA6M4 Rev.1.60):
-```sql
-CREATE TABLE bit_fields (
-    peripheral    TEXT,
-    register_name TEXT,
-    bits          TEXT,
-    symbol        TEXT,
-    access        TEXT,
-    reset         TEXT,
-    description   TEXT,
-    FOREIGN KEY (peripheral, register_name) REFERENCES registers(peripheral, register_name)
-);
-```
+`register_lookup` queries the Smart Manual DB directly at request time — there is no `registers.db` or import step. Relevant source tables:
 
-### 4.3 Document Registry (`data/registry.json`)
+| Table | Role |
+|---|---|
+| `moduleList` | Peripheral base addresses |
+| `registerList` | Register definitions + bit-diagram HTML (`display_data`) |
+| `bitList` | Bit-field definitions + R/W and enum values, only present inside `display_data` HTML |
 
-```json
-[
-  {
-    "doc_id":    "R01UH0890EJ0160",
-    "revision":  "1.60",
-    "chip_part": "RA6M4",
-    "path":      "data/pdfs/r01uh0890ej0160-ra6m4.pdf"
-  }
-]
-```
+`app/register_tool.py` parses `display_data` with BeautifulSoup to extract R/W, reset, and enumerated values that aren't available as plain columns. Full schema notes: [SmartManual_DB_Analysis.md](SmartManual_DB_Analysis.md).
 
 ---
 
@@ -310,17 +262,16 @@ CREATE TABLE bit_fields (
 
 | Module | File | Responsibility |
 |---|---|---|
-| `parser_text` | `ingest/parser_text.py` | PyMuPDF text + TOC + `section_path` resolver → `pages.jsonl` |
-| `parser_figures` | `ingest/parser_figures.py` | Figure crop + caption pairing → `figures.jsonl` + PNG files |
-| `parser_tables` | `ingest/parser_tables.py` | pdfplumber table detection (≥4 cols required) → `tables.jsonl` |
-| `register_schema` | `ingest/register_schema.py` | Parse register tables → populate `registers.db` |
-| `chunker` | `ingest/chunker.py` | Emit `prose`, `register_row`, `figure`, `table` chunks → `chunks.jsonl` |
-| `indexer` | `ingest/indexer.py` | Embed chunks with sentence-transformers → persist to ChromaDB |
-| `run_all` | `ingest/run_all.py` | Orchestrates all 6 ingest steps in order |
+| `smart_manual_locator` | `app/smart_manual_locator.py` | Resolve `{chip_part}` → local Smart Manual DB path (no fallback) |
+| `register_tool` | `app/register_tool.py` | `register_lookup(name, chip_part)` — live SQLite query + BeautifulSoup HTML parse |
+| `parser_smart_manual_text` | `ingest/parser_smart_manual_text.py` | `freeWord.keyword` → `pages_sm.jsonl` |
+| `parser_smart_manual_figures` | `ingest/parser_smart_manual_figures.py` | Extract `<figure>`/`<svg>` blocks → SVG files + figure records |
+| `chunker` | `ingest/chunker.py` | Emit `prose` and `figure` chunks → `chunks.jsonl` (unchanged) |
+| `indexer` | `ingest/indexer.py` | Embed chunks with sentence-transformers → persist to ChromaDB (unchanged) |
+| `run_all` | `ingest/run_all.py` | Orchestrates the ingest steps in order |
 | `retriever` | `app/retriever.py` | Chroma retriever (top-k + similarity threshold guard + citation attach) |
-| `register_tool` | `app/register_tool.py` | `register_lookup(name, chip_part)` via SQLite (exact + prefix match) |
-| `figure_tool` | `app/figure_tool.py` | `get_figure(figure_id, chip_part)` via Chroma filter → base64 image |
-| `figure_server` | `app/figure_server.py` | HTTPS daemon (port 7477, self-signed cert) serving PNG files |
+| `figure_tool` | `app/figure_tool.py` | `get_figure(figure_id, chip_part)` via Chroma filter → SVG |
+| `figure_server` | `app/figure_server.py` | HTTPS daemon (port 7477) serving SVG files |
 | `mcp_server` | `app/mcp_server.py` | FastMCP server — exposes `search_um`, `register_lookup`, `get_figure` |
 
 **Folder layout:**
@@ -328,15 +279,14 @@ CREATE TABLE bit_fields (
 project/
 ├── ingest/
 │   ├── run_all.py
-│   ├── parser_text.py
-│   ├── parser_figures.py
-│   ├── parser_tables.py
-│   ├── register_schema.py
+│   ├── parser_smart_manual_text.py
+│   ├── parser_smart_manual_figures.py
 │   ├── chunker.py
 │   └── indexer.py
 ├── app/
 │   ├── mcp_server.py
 │   ├── retriever.py
+│   ├── smart_manual_locator.py
 │   ├── register_tool.py
 │   ├── figure_tool.py
 │   └── figure_server.py
@@ -346,17 +296,12 @@ project/
 │   ├── golden_set_v2.csv
 │   └── results.md
 └── data/
-    ├── registry.json
-    ├── pdfs/
-    ├── figures/{doc_id}/     ← extracted PNGs
+    ├── figures/{chip}/       ← extracted SVGs
     ├── parsed/
-    │   ├── pages.jsonl
-    │   ├── figures.jsonl
-    │   ├── tables.jsonl
+    │   ├── pages_sm.jsonl
     │   └── chunks.jsonl
     └── store/
-        ├── chroma/
-        └── registers.db
+        └── chroma/
 ```
 
 ---
@@ -370,10 +315,10 @@ project/
 | Similarity threshold | `retriever.py` | Top score < 0.30 → return `{"refusal": "..."}`, not chunks |
 | Top-k cap | `search_um` tool | Default k=6, hard max k=10 |
 | Real figures only | `get_figure` tool | Returns `null` for any `figure_id` not in the indexed set |
-| Deterministic registers | `register_lookup` tool | Returns SQLite record verbatim — no LLM interpretation |
+| Deterministic registers | `register_lookup` tool | Returns the Smart Manual DB record verbatim — no LLM interpretation |
 | Citation baked in | All tools | Every returned item includes a pre-formatted `citation` field |
 | Scope guard | `search_um` tool | Returns refusal dict for queries with no matches in the specified `chip_part` |
-| 4-column register tables | `parser_tables.py` | Register tables must have ≥4 columns to be parsed — rejects false positives |
+| No fallback on missing DB | `smart_manual_locator.py` | Raises/returns an explicit error if the chip's Smart Manual DB isn't found locally |
 
 ### 6.2 Suggested Agent System Prompt
 
@@ -383,9 +328,8 @@ You have access to hardware UM tools for the {chip_part} chip.
 When answering questions about registers, peripherals, or figures:
 1. Always call the appropriate tool first — do not answer from memory.
 2. Quote register addresses, reset values, and bit positions verbatim from register_lookup results.
-3. Cite every factual statement using the citation field returned by the tool:
-   【{doc_id} Rev.{revision} | §{section} | p.{page}】
-4. If a tool returns a refusal or null, tell the user the information is not available in the UM.
+3. Cite every factual statement using the citation field returned by the tool.
+4. If a tool returns a refusal or null, tell the user the information is not available.
 5. Do not generate driver code or register configuration sequences.
 ```
 
@@ -393,11 +337,10 @@ When answering questions about registers, peripherals, or figures:
 
 ## 7. Eval
 
-### 7.1 Golden Set
-
-- **File:** `eval/golden_set_v2.csv` (69 questions)
-- **Distribution:** 30 `search_um` · 24 `register_lookup` · 15 `get_figure`
+- **File:** `eval/golden_set_v2.csv`
+- Built for the previous PDF-based pipeline — register names and citations need updating for the Smart Manual DB's FSP naming (e.g. `SCKCR` → `SCKDIVCR`) and the removal of page numbers before it's valid again.
 - **Generation:** `python -m eval.generate_testset` (requires LLM endpoint)
+- **Run:** `python -m eval.run`
   - Track 1 (search_um): LLM generates questions from sampled prose/table chunks
   - Track 2 (register_lookup): Template-based, deterministic, no LLM
   - Track 3 (get_figure): LLM generates questions from figure captions
