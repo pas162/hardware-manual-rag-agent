@@ -31,7 +31,7 @@ The Smart Manual VS Code extension already downloads a structured SQLite databas
 | Data | Smart Manual table | How it's used |
 |---|---|---|
 | Prose | `freeWord.keyword` | Chunked + embedded into ChromaDB |
-| Figures | `<figure>`/`<svg>` blocks inside `display_data` HTML | Extracted as SVG files + figure chunks |
+| Figures | `<figure>` blocks inside `display_data` HTML | Caption indexed for discovery; SVG read live on request, no files on disk |
 | Registers & bit-fields | `registerList` / `bitList` | Queried live at request time — no import step |
 
 ### Three Tools

@@ -9,7 +9,7 @@
 ## Task 0 — Repo Bootstrap ✅
 
 **Actions:**
-1. Create folders: `ingest/`, `app/`, `eval/`, `data/figures/`, `data/parsed/`, `data/store/`
+1. Create folders: `ingest/`, `app/`, `eval/`, `data/parsed/`, `data/store/`
 2. Create `requirements.txt`
 3. Create `.env` with `EMBED_MODEL`, `HF_HUB_OFFLINE=1`
 4. Install dependencies: `pip install -r requirements.txt`
@@ -54,16 +54,15 @@ Implement `ingest/parser_smart_manual_text.py`:
 
 ---
 
-## Task 4 — Figure Ingestion ⬜
+## Task 4 — Figure Discovery Index ⬜
 
 **Actions:**
 Implement `ingest/parser_smart_manual_figures.py`:
 1. Scan `display_data` HTML in `freeWord`, `registerList`, and `bitList` for `<figure>` blocks
-2. For each, extract the `<figcaption>` text and the inner `<svg>...</svg>`
-3. Save the SVG to `data/figures/{chip_part}/{figure_id}.svg`
-4. Emit one figure chunk per figure: `render_text = "[{section_title} > {figure_id}] {caption}"`
+2. For each, extract the `<figcaption>` text and a locator back to its source row (table + row key) — do **not** extract or save the `<svg>` itself; it stays in the DB and is read live by `get_figure` (Task 6)
+3. Emit one figure chunk per figure: `render_text = "[{section_title} > {figure_id}] {caption}"`
 
-**Checkpoint:** SVG files present in `data/figures/RA6M4/`; each figure chunk has a non-empty caption.
+**Checkpoint:** Each figure chunk has a non-empty caption and a resolvable row locator.
 
 ---
 
@@ -77,11 +76,11 @@ Implement `ingest/parser_smart_manual_figures.py`:
 
 ---
 
-## Task 6 — Figure Tool + Server (SVG) ⬜
+## Task 6 — Figure Tool (live query, no server) ⬜
 
 **Actions:**
-- `app/figure_tool.py` — `get_figure(figure_id, chip_part)` via Chroma filter, reads the `.svg` file, returns it as an `image/svg+xml` data URI
-- `app/figure_server.py` — serve `data/figures/{chip}/*.svg` with the correct MIME type
+- `app/figure_tool.py` — `get_figure(figure_id, chip_part)`: Chroma lookup on the discovery index to find which row (`freeWord`/`registerList`/`bitList`) holds the figure, then a live query + BeautifulSoup re-parse of that row's `display_data` to extract the `<svg>`, returned directly as an `image/svg+xml` data URI in the tool response.
+- No figure server needed — the DB, the MCP process, and the agent are all on the same local machine, so there's no reason to serve files over HTTP.
 
 **Checkpoint:** `get_figure("Figure 13.2", "RA6M4")` returns a valid SVG payload.
 

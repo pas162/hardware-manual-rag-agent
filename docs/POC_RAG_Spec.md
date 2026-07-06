@@ -60,13 +60,13 @@ Smart Manual DB (SQLite: RA6M4_en)
   ├─▶ freeWord.keyword ─────────────────────────────────────┐
   │     clean plain text per section                        │
   │                                                          │
-  ├─▶ <figure>/<svg> blocks in display_data (HTML) ──────────┤
+  ├─▶ <figure> captions in display_data (HTML) ────────────┤
   │     freeWord + registerList + bitList                   │
   │         │                                                │
   │         ▼                                                ▼
-  │    prose chunks                                    figure chunks
-  │    (500 chars, 80 overlap)                          + SVG saved to disk
-  │         │                                            (data/figures/{chip}/)
+  │    prose chunks                              figure discovery index
+  │    (500 chars, 80 overlap)                    (figure_id + caption only —
+  │         │                                     no SVG payload stored)
   │         └──────────────────┬─────────────────────────────┘
   │                            ▼
   │         sentence-transformers/all-MiniLM-L6-v2 (local)
@@ -74,7 +74,7 @@ Smart Manual DB (SQLite: RA6M4_en)
   └──────────────────▶ ChromaDB persistent collection
 ```
 
-Registers and bit-fields are **not** part of this ingestion step — they're queried live at request time (see 2.2).
+Registers, bit-fields, and the actual figure SVG markup are **not** part of this ingestion step — they're all queried live from the Smart Manual DB at request time (see 2.2). Only enough metadata to *find* a figure (its caption) is embedded ahead of time.
 
 Run ingestion: `python -m ingest.run_all`
 
@@ -98,11 +98,14 @@ app/mcp_server.py  ← local process on developer's machine
   │                       └─▶ returns: list of RegisterRecord {address, reset, bit_fields, citation}
   │
   └─▶ tool: get_figure(figure_id, chip_part)
-        └─▶ Chroma filter by figure_id + metadata
-              └─▶ returns: FigureRecord {caption, svg as data URI, section_title, citation}
+        └─▶ Chroma filter locates the source row for figure_id
+              └─▶ live query re-reads that row's display_data, BeautifulSoup extracts the <svg>
+                    └─▶ returns: FigureRecord {caption, svg as data URI, section_title, citation}
 
 Agent receives tool results → reasons → answers developer's question
 ```
+
+Everything happens inside the single local MCP process (stdio, no network hop) — there is no separate figure HTTP server. `get_figure` reads the DB and hands the SVG straight back in the tool response.
 
 **Key design decisions:**
 
@@ -119,6 +122,7 @@ Agent receives tool results → reasons → answers developer's question
 | Similarity threshold enforced at tool level | Returns a refusal dict rather than low-confidence chunks |
 | Hybrid BM25 + dense retrieval (RRF) | Prevents dense-embedding collisions between similarly named registers |
 | Figures kept as native SVG | Source figures are vector (`<svg>`) — rasterizing would lose fidelity |
+| Figures queried live, no disk copy or server | Same reasoning as registers — the SVG in `display_data` doesn't change; only a small caption index needs pre-building |
 | No page numbers in citations | Smart Manual DB carries no page metadata; citations reference section titles instead |
 
 ### 2.3 Agent Configuration
@@ -256,6 +260,10 @@ No page numbers — the Smart Manual DB does not carry page metadata.
 
 `app/register_tool.py` parses `display_data` with BeautifulSoup to extract R/W, reset, and enumerated values that aren't available as plain columns. Full schema notes: [SmartManual_DB_Analysis.md](SmartManual_DB_Analysis.md).
 
+### 4.3 Figure Data (no local copy)
+
+`get_figure` follows the same live-query pattern as registers: the Chroma discovery index only stores `{figure_id, caption, section_title, chip_part}` to make figures findable. The actual `<svg>` markup is re-read from the Smart Manual DB and parsed out of `display_data` on each call — no `.svg` files on disk, no HTTP server.
+
 ---
 
 ## 5. Module Map
@@ -265,14 +273,15 @@ No page numbers — the Smart Manual DB does not carry page metadata.
 | `smart_manual_locator` | `app/smart_manual_locator.py` | Resolve `{chip_part}` → local Smart Manual DB path (no fallback) |
 | `register_tool` | `app/register_tool.py` | `register_lookup(name, chip_part)` — live SQLite query + BeautifulSoup HTML parse |
 | `parser_smart_manual_text` | `ingest/parser_smart_manual_text.py` | `freeWord.keyword` → `pages_sm.jsonl` |
-| `parser_smart_manual_figures` | `ingest/parser_smart_manual_figures.py` | Extract `<figure>`/`<svg>` blocks → SVG files + figure records |
+| `parser_smart_manual_figures` | `ingest/parser_smart_manual_figures.py` | Build the figure discovery index (`figure_id`, caption, section_title) — no SVG extraction |
 | `chunker` | `ingest/chunker.py` | Emit `prose` and `figure` chunks → `chunks.jsonl` (unchanged) |
 | `indexer` | `ingest/indexer.py` | Embed chunks with sentence-transformers → persist to ChromaDB (unchanged) |
 | `run_all` | `ingest/run_all.py` | Orchestrates the ingest steps in order |
 | `retriever` | `app/retriever.py` | Chroma retriever (top-k + similarity threshold guard + citation attach) |
-| `figure_tool` | `app/figure_tool.py` | `get_figure(figure_id, chip_part)` via Chroma filter → SVG |
-| `figure_server` | `app/figure_server.py` | HTTPS daemon (port 7477) serving SVG files |
+| `figure_tool` | `app/figure_tool.py` | `get_figure(figure_id, chip_part)` — Chroma lookup to locate the source row, then live query + BeautifulSoup to extract the `<svg>` |
 | `mcp_server` | `app/mcp_server.py` | FastMCP server — exposes `search_um`, `register_lookup`, `get_figure` |
+
+No figure server is needed — the Smart Manual DB, the MCP server, and the agent all run on the same local machine, so `get_figure` just reads the DB and returns the SVG directly in the tool response.
 
 **Folder layout:**
 ```
@@ -288,15 +297,13 @@ project/
 │   ├── retriever.py
 │   ├── smart_manual_locator.py
 │   ├── register_tool.py
-│   ├── figure_tool.py
-│   └── figure_server.py
+│   └── figure_tool.py
 ├── eval/
 │   ├── run.py
 │   ├── generate_testset.py
 │   ├── golden_set_v2.csv
 │   └── results.md
 └── data/
-    ├── figures/{chip}/       ← extracted SVGs
     ├── parsed/
     │   ├── pages_sm.jsonl
     │   └── chunks.jsonl

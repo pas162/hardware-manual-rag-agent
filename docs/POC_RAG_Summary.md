@@ -21,7 +21,7 @@ This POC turns the UM into a **set of callable tools** that any AI agent can inv
 The Renesas Smart Manual VS Code extension already downloads a structured SQLite database per chip to local disk. Rather than re-parsing the PDF, this POC reads that database directly:
 
 - **Prose** (`freeWord.keyword`) → chunked and embedded into ChromaDB
-- **Figures** — embedded as native `<svg>` inside the DB's HTML content → extracted as SVG files + figure chunks
+- **Figures** — embedded as native `<svg>` inside the DB's HTML content → caption indexed for discovery, SVG read live on request (no files on disk, no server)
 - **Registers & bit-fields** (`registerList` / `bitList`) → queried live at request time, no import step
 
 ## How It Works — 30-Second Version
