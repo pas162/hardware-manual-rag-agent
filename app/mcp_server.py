@@ -4,7 +4,10 @@ MCP server for Hardware User Manual RAG.
 Exposes three tools:
   search_um(query, chip_part, top_k=6)   — semantic search (prose + registers + figures)
   register_lookup(name, chip_part)        — deterministic SQLite register lookup
-  get_figure(figure_id, chip_part)        — retrieve a figure by ID
+  get_figure(figure_id, chip_part)        — retrieve a figure by ID, and automatically
+                                             push it into the Renesas Smart Manual VS Code
+                                             extension for display (see _open_vscode_show_figure).
+                                             Set SMART_MANUAL_AUTO_SHOW=0 to disable.
 
 Run (stdio — default, used by Cursor/Claude Desktop/RICA via mcp.json):
   python -m app.mcp_server
@@ -18,9 +21,15 @@ Inspect:
 """
 
 import argparse
+import json
 import os
+import platform
+import subprocess
 import sys
+import tempfile
 import threading
+from pathlib import Path
+from urllib.parse import quote
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -34,6 +43,62 @@ def _log(msg: str) -> None:
 
 
 mcp = FastMCP("hardware-um")
+
+# ── Auto-display in the Renesas Smart Manual VS Code extension ───────────────
+# get_figure pushes its result straight into VS Code by writing a handoff
+# file that the extension watches (and also best-effort opens a `vscode://`
+# URI, which helps in some single-VS-Code-instance setups but isn't relied
+# on), instead of relying on the calling agent to correctly forward the tool
+# result to a second command.
+#
+# This is intentionally fire-and-forget: we do NOT wait for/confirm that the
+# extension actually rendered it (that added latency and, in one setup,
+# stalled the whole tool call). `shown_in_vscode` below only reflects
+# whether the push itself was attempted successfully, not a confirmed
+# display — good enough for now; can be revisited later if a real ack loop
+# is needed again.
+
+_VSCODE_SHOW_FIGURE_URI = (
+    "vscode://RenesasElectronicsCorporation.renesas-smart-manual/showFigure"
+)
+_FIGURE_HANDOFF_FILE = Path(tempfile.gettempdir()) / "smart_manual_figure.json"
+
+
+def _auto_show_enabled() -> bool:
+    return os.environ.get("SMART_MANUAL_AUTO_SHOW", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+    )
+
+
+def _open_vscode_show_figure(payload: dict) -> bool:
+    """Write the figure payload to a handoff file that the extension's file
+    watcher picks up, and best-effort also open VS Code's showFigure URI.
+
+    Fire-and-forget: never waits for the extension to confirm anything, so
+    this never adds latency to the tool call. Never raises — any failure
+    here is swallowed and just means the figure silently doesn't appear,
+    which is NOT an error.
+    """
+    try:
+        _FIGURE_HANDOFF_FILE.write_text(json.dumps(payload), encoding="utf-8")
+    except Exception as exc:  # noqa: BLE001
+        _log(f"could not write figure handoff file (non-fatal): {exc!r}")
+        return False
+
+    try:
+        uri = f"{_VSCODE_SHOW_FIGURE_URI}?file={quote(str(_FIGURE_HANDOFF_FILE))}"
+        system = platform.system()
+        if system == "Windows":
+            os.startfile(uri)  # type: ignore[attr-defined]
+        elif system == "Darwin":
+            subprocess.run(["open", uri], check=False)
+        else:
+            subprocess.run(["xdg-open", uri], check=False)
+    except Exception as exc:  # noqa: BLE001
+        _log(f"could not open vscode:// URI (non-fatal): {exc!r}")
+    return True
 
 # ── Lazy, non-blocking warmup ─────────────────────────────────────────────────
 # IMPORTANT: do NOT load the embedding model or start the figure server at import
@@ -167,16 +232,49 @@ def register_lookup(name: str, chip_part: str) -> list[dict]:
 def get_figure(figure_id: str, chip_part: str) -> dict | None:
     """Retrieve a figure by its ID (e.g. 'Figure 13.2.1').
 
-    Returns caption, section_title, citation, and svg (raw SVG markup read live
-    from the Smart Manual DB) so the agent can render the figure directly.
-    Returns null for unknown figure IDs.
+    Returns caption, section_title, citation, and svg (raw SVG markup read
+    live from the Smart Manual DB). Returns null for unknown figure IDs.
+
+    As a side effect, this also tries to auto-display the figure in the
+    "Renesas Smart Manual" VS Code extension, if it happens to be installed
+    and running. This is fire-and-forget, best-effort, and silent: it never
+    waits for or confirms that the extension actually rendered anything, so
+    it never adds latency or can get "stuck". It is NOT part of what makes
+    this tool call successful or not. Whether or not the figure ends up
+    visually displayed:
+      - Treat this call as fully successful as long as the fields above
+        (svg, caption, etc.) were returned.
+      - Do NOT retry, do NOT call any other command, and do NOT mention any
+        "failure" to the user — `shown_in_vscode` only reflects whether the
+        push attempt itself ran, not a confirmed display, so a false value
+        is completely normal and not an error.
+      - You may still describe the figure to the user in your own words
+        using caption/section_title/citation as you normally would.
 
     Args:
         figure_id: Figure identifier, e.g. "Figure 13.2.1"
         chip_part: Chip identifier, e.g. "RA6M4"
     """
     from app.figure_tool import get_figure as _get_figure
-    return _get_figure(figure_id, chip_part)
+    result = _get_figure(figure_id, chip_part)
+    if result is None:
+        return None
+
+    shown = _auto_show_enabled() and _open_vscode_show_figure(result)
+    result["shown_in_vscode"] = shown
+    result["note"] = (
+        "This figure was also pushed to the 'Smart Manual' panel in VS Code "
+        "(fire-and-forget, unconfirmed) — mention that to the user, no "
+        "further action needed."
+        if shown
+        else (
+            "Figure data retrieved successfully (this is not an error). "
+            "Auto-display wasn't attempted/available this time, which is "
+            "fine and expected. No further action needed; do not retry or "
+            "call any other command for this."
+        )
+    )
+    return result
 
 
 if __name__ == "__main__":
