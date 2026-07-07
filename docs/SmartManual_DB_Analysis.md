@@ -217,10 +217,11 @@ Metadata only. The `Prefix` value confirms FSP-aligned register naming throughou
 **Register-description entries:** 715 entries have the pattern `"SYMBOL : Full Register Name"` in the title — each contains the full bit-field table as plain text in `keyword`.
 
 **Key observations:**
-- The `keyword` field is **immediately usable as RAG chunk text** — clean prose, no HTML parsing needed.
-- The `keyword` for register sections (e.g. `IELSRn`) contains: base address, offset formula, bit layout, reset values, R/W per bit, enumerated values, and full functional description — **richer than the POC's `register_row` chunks**.
+- ~~The `keyword` field is immediately usable as RAG chunk text — clean prose, no HTML parsing needed.~~ **Correction (re-verified against the live RA6M4 DB during implementation):** `keyword` is a *flattened text soup*, not clean prose — for register sections it inlines the bit-position table's numbers and the `Bit | Symbol | Function | R/W` table with no separators (see sample below), and for sections containing a figure/diagram it inlines every text label extracted from inside the `<svg>` (e.g. `1.2. Block Diagram`'s `keyword` reads `...Memory Memory 1 MB code flash 1 MB code flash 8 KB data flash...`, every component label in that diagram, flattened into the sentence stream). Using `keyword` as-is for RAG chunking would pollute `search_um` with table/diagram-label noise. The ingestion pipeline instead parses `freeWord.display_data` (HTML), decomposes register `<table>`s and `<figure>`s, and takes the remaining text as prose — see `POC_RAG_Tasks.md` Task 3.
+- The `keyword` for register sections (e.g. `IELSRn`) contains: base address, offset formula, bit layout, reset values, R/W per bit, enumerated values, and full functional description — **richer than the POC's `register_row` chunks** (this part of the original observation still holds — it's just why `keyword` can't be used verbatim as *prose*, since this richness is table data now served instead by `register_lookup`).
 - **No page numbers anywhere** — `page` is NULL for all 2,089 rows. This is the primary gap vs. PDF-derived data.
 - The `title` dotted numbering can be converted to a `section_path` string (e.g. `"13.2.15."` → `"§13. ICU > §13.2 Register Descriptions > §13.2.15 IELSRn"`).
+- Of the 2,089 `freeWord` rows, 1,020 contain at least one `<table>` in `display_data`; **392 of those are not register-titled sections** (e.g. `1.4. Function Comparison`, `1.5. Pin Functions`, `2.7.2. Peripheral Address Map`) — these are general/lookup tables with no equivalent in `register_lookup` and must be preserved as their own chunk type, not discarded alongside register bit-tables.
 
 **Sample `keyword` for `IELSRn` (truncated):**
 ```
@@ -254,10 +255,10 @@ Bit  Symbol    Function                          R/W
 | **Register addresses** | ✅ absolute hex | ✅ absolute hex (4,136 / 4,144) |
 | **Module base addresses** | ❌ not stored | ✅ `moduleList` (112 peripherals) |
 | **Section / page provenance** | ✅ `section_path` + `page_start` | ❌ no page numbers anywhere |
-| **Prose text for RAG** | ✅ `chunks.jsonl` (prose chunks) | ✅ `freeWord.keyword` (plain text) |
+| **Prose text for RAG** | ✅ `chunks.jsonl` (prose chunks) | ✅ `freeWord.display_data` (HTML, parsed — `keyword` is unusable soup) |
 | **Register naming convention** | PDF-derived (e.g. `SCKCR`) | FSP-aligned (e.g. `SCKDIVCR`) |
 | **Indexed register variants** | Prefix match (`IELSRn` → `IELSR0`–`95`) | Individual rows per variant |
-| **Figure images** | ✅ PNG + base64 + caption | ❌ not present |
+| **Figure images** | ✅ PNG + base64 + caption | ✅ native `<svg>` in `display_data` |
 | **HTML rendering** | ❌ | ✅ all three data tables have `display_data` |
 
 ---
@@ -267,7 +268,6 @@ Bit  Symbol    Function                          R/W
 | Issue | Detail |
 |---|---|
 | **No page numbers** | `freeWord.page` is NULL for all rows — citations cannot include `p.NNN` without cross-referencing the PDF |
-| **No figures** | No image data anywhere in the DB — POC's `parser_figures.py` pipeline remains necessary |
 | **`rwflg` / `function_text` empty** | R/W and function description for bits require HTML parsing of `bitList.display_data` |
 | **Duplicate module aliases** | e.g. `R_SYSC` and `R_SYSTEM` both at `0x4001E000`; `R_IIC0` appears twice — deduplication needed on import |
 | **Naming discrepancy** | PDF-derived names (e.g. `SCKCR`) differ from FSP names (e.g. `SCKDIVCR`) — `rapidfuzz` in `app/register_tool.py` mitigates this but `eval/golden_set_v2.csv` should be reviewed |
@@ -281,16 +281,16 @@ Bit  Symbol    Function                          R/W
 
 ### 🟢 High Value — Direct Reuse
 
-#### A. Replace / augment `registers.db` with `registerList` + `bitList`
-Write `ingest/import_smart_manual.py` to:
-1. Read `moduleList` → populate a new `modules` table in `registers.db` (peripheral name + base address)
-2. Read `registerList` → populate `registers` table (8× more registers, authoritative addresses)
-3. Parse `bitList.display_data` HTML with BeautifulSoup → extract `bit`, `symbol`, `R/W`, `reset`, `function` → populate `bit_fields` table
+#### A. Serve `register_lookup` live from `registerList` + `bitList`
+No import step and no `registers.db` — `app/register_tool.py` queries the Smart Manual DB directly at request time:
+1. Query `registerList` for exact + prefix matches (`LIKE 'name%'`) on `register_symbol_name` — enrich with the peripheral base address from `moduleList`.
+2. Join `bitList` on `register_symbol_name`; parse each row's `display_data` HTML with BeautifulSoup to extract `bit`, `symbol`, `R/W`, `reset`, and enumerated values (not present as plain columns).
+3. Deduplicate module aliases (e.g. `R_SYSC`/`R_SYSTEM`) in the live-query path, since there is no import script to do it.
 
-This makes `register_lookup` dramatically more complete without changing the tool contract in `app/register_tool.py`.
+This gives `register_lookup` the full 4,144-register coverage while keeping the tool contract unchanged and avoiding a duplicated second store.
 
-#### B. Use `freeWord.keyword` as prose corpus for `search_um`
-The `keyword` field is clean plain text for all 2,089 sections — usable as direct input to `ingest/chunker.py` as a supplement or replacement for `pages.jsonl`. The dotted `title` numbering maps to `section_path`.
+#### B. Parse `freeWord.display_data` as the prose + general-table corpus for `search_um`
+Not `keyword` (see correction above) — `display_data` (HTML) is parsed with BeautifulSoup per section: register `<table>`s and `<figure>` blocks are decomposed out first, remaining `<table>`s are kept as general/lookup-table chunks, and the leftover text becomes the prose chunk. The dotted `title` numbering maps to `section_path`.
 
 #### C. Use `moduleList` as a peripheral registry
 Enrich `register_lookup` responses with `base_address` and enable a potential new `list_peripherals(chip_part)` tool.
@@ -308,36 +308,34 @@ The bit-position diagram HTML contains per-bit reset values, useful for validati
 #### F. Page numbers
 All `page` fields are NULL — the PDF remains the only source for page-level citations.
 
-#### G. Figure images
-Not present in the DB — `ingest/parser_figures.py` and the PNG extraction pipeline remain necessary for `get_figure`.
+#### G. Figure images — native `<svg>` in `display_data`
+Figures are embedded as native `<svg>` markup inside the `display_data` HTML across `freeWord`, `registerList`, and `bitList`. Only the `<figcaption>` needs pre-indexing for discovery; the `<svg>` itself is read live from the DB and parsed with BeautifulSoup by `get_figure` on each call — no PNG extraction, no `.svg` files on disk, no HTTP server. `ingest/parser_figures.py` is no longer required; the discovery index built by `ingest/parser_smart_manual_figures.py` stores only `{figure_id, caption, section_title}`.
+pipeline remain necessary for `get_figure`.
 
 ---
 
 ## 7. Recommended Integration Path
 
 ```
-smart-manual-db/RA6M4_en
-        │
-        ▼
-ingest/import_smart_manual.py          ← new module
-        │
-        ├─▶ moduleList
-        │     └─▶ data/store/registers.db  (new: modules table)
-        │
-        ├─▶ registerList
-        │     └─▶ data/store/registers.db  (registers table — replaces PDF-parsed 511 rows with 4,144)
-        │
-        ├─▶ bitList.display_data  (BeautifulSoup)
-        │     └─▶ data/store/registers.db  (bit_fields table — replaces PDF-parsed 3,303 rows with 20,457)
-        │
-        └─▶ freeWord.keyword
-              └─▶ data/parsed/pages_sm.jsonl   (supplement or replace pages.jsonl)
-                    └─▶ ingest/chunker.py  (existing, unchanged)
-                          └─▶ data/parsed/chunks.jsonl
-                                └─▶ ingest/indexer.py  (existing, unchanged)
-                                      └─▶ data/store/chroma/
+smart-manual-db/RA6M4_en (SQLite, read directly — no import)
+│
+├─▶ registerList + bitList ──▶ app/register_tool.py
+│ live SQLite query + BeautifulSoup parse of display_data
+│ (address, R/W, reset, enumerated values) → RegisterRecord
+│
+├─▶ <figure> captions in display_data ──▶ ingest/parser_smart_manual_figures.py
+│ discovery index only {figure_id, caption, section_title}
+│ the <svg> stays in the DB, read live by app/figure_tool.py
+│
+└─▶ freeWord.display_data ──▶ ingest/parser_smart_manual_text.py
+│ classify each <table> (register vs. general)
+└─▶ data/parsed/pages_sm.jsonl (prose) + tables_sm.jsonl (general tables)
+└─▶ ingest/chunker.py (rewrite — 3 chunk types)
+└─▶ data/parsed/chunks.jsonl
+└─▶ ingest/indexer.py (unchanged)
+└─▶ data/store/chroma/
 ```
 
-**No changes required** to `app/register_tool.py`, `app/retriever.py`, `app/figure_tool.py`, or `app/mcp_server.py` — the tool contracts remain identical. Only the ingest side changes.
+**Registers, bit-fields, and figure SVGs are queried live** — only prose, general/lookup tables, and figure captions are pre-embedded into ChromaDB. There is no `registers.db` and no import script.
 
-**One normalization step needed:** map smart-manual FSP symbol names to PDF-derived names (or update `eval/golden_set_v2.csv`) to avoid `register_lookup` misses on names like `SCKCR` vs `SCKDIVCR`.
+**One normalization step needed:** register names follow the Smart Manual's FSP convention (e.g. `SCKDIVCR`, not the PDF's `SCKCR`). `rapidfuzz` in `app/register_tool.py` maps PDF-era names as a convenience layer, and `eval/golden_set_v2.csv` should be updated to use FSP names directly.

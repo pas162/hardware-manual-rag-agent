@@ -52,27 +52,38 @@ Plain SQLite file — no fallback path. If it's missing, the tool returns an err
 
 ## 2. Architecture
 
-### 2.1 Ingestion (offline, one-shot — prose & figures only)
+### 2.1 Ingestion (offline, one-shot — prose, general tables & figures only)
 
 ```
 Smart Manual DB (SQLite: RA6M4_en)
   │
-  ├─▶ freeWord.keyword ─────────────────────────────────────┐
-  │     clean plain text per section                        │
-  │                                                          │
-  ├─▶ <figure> captions in display_data (HTML) ────────────┤
-  │     freeWord + registerList + bitList                   │
-  │         │                                                │
-  │         ▼                                                ▼
-  │    prose chunks                              figure discovery index
-  │    (500 chars, 80 overlap)                    (figure_id + caption only —
-  │         │                                     no SVG payload stored)
-  │         └──────────────────┬─────────────────────────────┘
+  ├─▶ freeWord.display_data (HTML) ── per-section, split 3 ways ──┐
+  │     │                                                          │
+  │     ├─ register <table> (Bit|Symbol|Function|R/W, or          │
+  │     │   borderless frame-none bit-diagram) ─── decompose()    │
+  │     │   (redundant with register_lookup — discarded)          │
+  │     │                                                          │
+  │     ├─ general <table> (Function Comparison, Pin Lists,       │
+  │     │   Address Maps, ...) ──────────────────► general table  │
+  │     │                                            chunks        │
+  │     │                                                          │
+  │     └─ remaining text (register/figure tags removed) ─► prose │
+  │                                                            chunks
+  ├─▶ <figure> captions in display_data (HTML) ────────────────────┤
+  │     freeWord + registerList + bitList                          │
+  │         │                                                       │
+  │         ▼                                                       ▼
+  │    prose + table chunks                        figure discovery index
+  │    (prose: 500 chars, 80 overlap)                (figure_id + caption only —
+  │         │                                          no SVG payload stored)
+  │         └──────────────────┬───────────────────────────────────┘
   │                            ▼
   │         sentence-transformers/all-MiniLM-L6-v2 (local)
   │                            ▼
   └──────────────────▶ ChromaDB persistent collection
 ```
+
+`freeWord.keyword` is **not** used — it's a flattened text soup that inlines register bit-table numbers and SVG figure-label text into the prose with no separators (verified against the live RA6M4 DB). Ingestion instead parses `freeWord.display_data` HTML and classifies each `<table>` as a register bit-table (discarded — redundant with the live `register_lookup` query) or a general/lookup table (kept as its own `table` chunk — e.g. Function Comparison, Pin Lists, Address Maps have no equivalent elsewhere and would otherwise be silently lost).
 
 Registers, bit-fields, and the actual figure SVG markup are **not** part of this ingestion step — they're all queried live from the Smart Manual DB at request time (see 2.2). Only enough metadata to *find* a figure (its caption) is embedded ahead of time.
 
@@ -176,7 +187,7 @@ search_um(query: str, chip_part: str, top_k: int = 6) -> list[Chunk] | dict
 Returns list of `Chunk`:
 ```json
 {
-  "element_type": "prose | figure",
+  "element_type": "prose | table | figure",
   "section_title": "13.2.4. IELSRn : ICU Event Link Setting Register n",
   "render_text": "[13.2.4. IELSRn] Interrupt event link select ...",
   "citation": "【RA6M4 Smart Manual | 13.2.4. IELSRn】"
@@ -243,8 +254,10 @@ Returns `null` for unknown figure IDs.
 |---|---|---|
 | `chip_part` | str | e.g. `RA6M4` |
 | `section_title` | str | From `freeWord.title`, e.g. `13.2.4. IELSRn : ICU Event Link Setting Register n` |
-| `element_type` | str | `prose` \| `figure` |
+| `element_type` | str | `prose` \| `table` \| `figure` |
 | `figure_id` | str | e.g. `Figure 13.2` (figure chunks only) |
+
+`table` chunks come from general/lookup tables inside `freeWord.display_data` (e.g. Function Comparison, Pin Lists, Address Maps) — anything that is **not** a register bit-table. Register bit-tables are deliberately excluded from ingestion since `register_lookup` serves them live with richer structure (see 4.2).
 
 No page numbers — the Smart Manual DB does not carry page metadata.
 
@@ -272,9 +285,9 @@ No page numbers — the Smart Manual DB does not carry page metadata.
 |---|---|---|
 | `smart_manual_locator` | `app/smart_manual_locator.py` | Resolve `{chip_part}` → local Smart Manual DB path (no fallback) |
 | `register_tool` | `app/register_tool.py` | `register_lookup(name, chip_part)` — live SQLite query + BeautifulSoup HTML parse |
-| `parser_smart_manual_text` | `ingest/parser_smart_manual_text.py` | `freeWord.keyword` → `pages_sm.jsonl` |
+| `parser_smart_manual_text` | `ingest/parser_smart_manual_text.py` | `freeWord.display_data` → classify each `<table>` (register vs. general) → `pages_sm.jsonl` (clean prose) + `tables_sm.jsonl` (general/lookup tables) |
 | `parser_smart_manual_figures` | `ingest/parser_smart_manual_figures.py` | Build the figure discovery index (`figure_id`, caption, section_title) — no SVG extraction |
-| `chunker` | `ingest/chunker.py` | Emit `prose` and `figure` chunks → `chunks.jsonl` (unchanged) |
+| `chunker` | `ingest/chunker.py` | Emit `prose`, `table`, and `figure` chunks → `chunks.jsonl` |
 | `indexer` | `ingest/indexer.py` | Embed chunks with sentence-transformers → persist to ChromaDB (unchanged) |
 | `run_all` | `ingest/run_all.py` | Orchestrates the ingest steps in order |
 | `retriever` | `app/retriever.py` | Chroma retriever (top-k + similarity threshold guard + citation attach) |
@@ -306,6 +319,7 @@ project/
 └── data/
     ├── parsed/
     │   ├── pages_sm.jsonl
+    │   ├── tables_sm.jsonl
     │   └── chunks.jsonl
     └── store/
         └── chroma/

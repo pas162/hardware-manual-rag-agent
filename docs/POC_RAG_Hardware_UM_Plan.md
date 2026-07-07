@@ -30,15 +30,18 @@ The Smart Manual VS Code extension already downloads a structured SQLite databas
 
 | Data | Smart Manual table | How it's used |
 |---|---|---|
-| Prose | `freeWord.keyword` | Chunked + embedded into ChromaDB |
+| Prose | `freeWord.display_data` HTML, register `<table>`s and `<figure>`s stripped out | Chunked + embedded into ChromaDB |
+| General/lookup tables | `freeWord.display_data` HTML, non-register `<table>`s (e.g. Function Comparison, Pin Lists) | Chunked + embedded into ChromaDB |
 | Figures | `<figure>` blocks inside `display_data` HTML | Caption indexed for discovery; SVG read live on request, no files on disk |
 | Registers & bit-fields | `registerList` / `bitList` | Queried live at request time — no import step |
+
+> `freeWord.keyword` is not used directly — it flattens register bit-tables and figure/SVG label text into the prose with no separators, so ingestion parses `freeWord.display_data` (HTML) and classifies each `<table>` before deciding what to keep. See [POC_RAG_Tasks.md](POC_RAG_Tasks.md) Task 3.
 
 ### Three Tools
 
 | Tool | Source | Returns |
 |---|---|---|
-| `search_um` | ChromaDB | Top-k cited chunks (prose, figures) |
+| `search_um` | ChromaDB | Top-k cited chunks (prose, tables, figures) |
 | `register_lookup` | Smart Manual DB (live query) | Register record: address, reset value, bit fields |
 | `get_figure` | ChromaDB + disk | Figure record: caption, SVG image, section title |
 

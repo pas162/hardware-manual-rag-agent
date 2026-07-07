@@ -43,14 +43,23 @@ Rewrite `app/register_tool.py`:
 
 ---
 
-## Task 3 — Prose Ingestion ⬜
+## Task 3 — Prose + General-Table Ingestion ⬜
+
+> **Revised after inspecting the live DB.** `freeWord.keyword` is *not* clean prose — it's a flattened text soup that inlines register bit-table numbers/labels and SVG figure-label text into the surrounding prose with no separators. Verified on RA6M4: e.g. the `IELSRn` section's `keyword` reads `...Value after reset: 0 0 0 0...Bit Symbol Function R/W 8:0 IELS[8:0]...`, and the `1.2. Block Diagram` section's `keyword` reads `...Memory Memory 1 MB code flash 1 MB code flash 8 KB data flash...` (every text label inside that figure's `<svg>`, flattened). Using `keyword` as-is would dilute `search_um` with table/diagram-label noise.
+>
+> Parsing `freeWord.display_data` (HTML) instead lets us split cleanly — but naively stripping *all* `<table>` tags is also wrong: of the 2,089 `freeWord` rows, 1,020 contain a `<table>`, and **392 of those are not register-titled sections** — e.g. `1.4. Function Comparison`, `1.5. Pin Functions`, `2.7.2. Peripheral Address Map`. These are genuine lookup tables with no equivalent in `register_lookup`; discarding them would silently lose real content. Only register bit-tables (redundant with `register_lookup`) should be dropped.
 
 **Actions:**
 Implement `ingest/parser_smart_manual_text.py`:
-1. Read all rows from `freeWord` (`title`, `keyword`)
-2. Emit one record per row to `data/parsed/pages_sm.jsonl`: `{"section_title": title, "text": keyword}`
+1. Read `title`, `display_data` from every `freeWord` row via the locator.
+2. Parse `display_data` with BeautifulSoup. For each `<table>`, classify it:
+   - **register_table** — its `<th>` header row starts with "Bit" (the `Bit | Symbol | Function | R/W` layout used throughout `bitList`), OR it's the borderless bit-position diagram (`<table class="frame-none">`, no `<th>` at all) inside a register-titled section.
+   - **general_table** — everything else (function comparison, pin lists, address maps, etc.)
+3. `.decompose()` every `register_table` and every `<figure>` block (figures are handled by Task 4). Leave `general_table`s in the tree.
+4. Serialize each surviving `general_table` (pipe-delimited, same format as the old `ingest/chunker.py::_serialize_table`) to `data/parsed/tables_sm.jsonl`: `{"section_title": title, "table_title": <caption or "">, "rows_text": serialized}`.
+5. Take the tree's remaining text (`.get_text(separator=" ", strip=True)`) as clean prose. Emit to `data/parsed/pages_sm.jsonl`: `{"section_title": title, "text": cleaned_text}`. Skip rows with empty cleaned text (pure-table/pure-figure sections).
 
-**Checkpoint:** `pages_sm.jsonl` row count matches `freeWord` row count (2,089 for RA6M4).
+**Checkpoint:** `pages_sm.jsonl` row count ≈ `freeWord` row count (2,089, minus rows that clean to empty). `tables_sm.jsonl` contains the ~392 general/lookup tables, with zero register bit-tables leaking in. Spot-check that `IELSRn`'s prose no longer contains bit-table numbers, and `1.2. Block Diagram`'s prose no longer contains SVG label soup.
 
 ---
 
@@ -69,10 +78,10 @@ Implement `ingest/parser_smart_manual_figures.py`:
 ## Task 5 — Chunking + Embedding ⬜
 
 **Actions:**
-- `ingest/chunker.py` — reuse existing prose chunking (`RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=80)`) over `pages_sm.jsonl`; one chunk per figure record. No code changes needed beyond pointing it at the new input files.
+- `ingest/chunker.py` — three chunk types now: `prose` (`RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=80)` over `pages_sm.jsonl`), `table` (one chunk per `tables_sm.jsonl` record — the preserved general/lookup tables), `figure` (one per figure discovery record). Register bit-tables are intentionally excluded — `register_lookup` serves them live.
 - `ingest/indexer.py` — reuse existing embedding + Chroma persistence, unchanged.
 
-**Checkpoint:** `Chroma(...).similarity_search("clock generation circuit", k=3)` returns ≥ 1 relevant hit.
+**Checkpoint:** `Chroma(...).similarity_search("clock generation circuit", k=3)` returns ≥ 1 relevant hit. `Chroma(...).similarity_search("function comparison pin count package", k=3)` surfaces the `1.4. Function Comparison` table chunk.
 
 ---
 
