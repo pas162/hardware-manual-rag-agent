@@ -43,40 +43,95 @@ mcp = FastMCP("hardware-um")
 # Instead we kick off warmup in a background thread so `mcp.run()` can answer the
 # handshake immediately, and each tool waits on the warmup only when first called.
 
-_warmup_done = threading.Event()
+_vs_ready = threading.Event()   # set when vectorstore + BM25 are loaded
 _warmup_error: Exception | None = None
-_figure_server_port: int | None = None
+_warmup_elapsed: float | None = None   # seconds taken, set on completion
 
 
 def _warmup_worker() -> None:
-    """Load heavy resources in the background; record any failure."""
-    global _warmup_error, _figure_server_port
+    """Pre-load the embedding model, Chroma vectorstore, and BM25 index."""
+    import time
+    global _warmup_error, _warmup_elapsed
+    t0 = time.perf_counter()
     try:
-        from app.figure_server import start_figure_server
+        _log("warmup: loading embedding model + Chroma ...")
         from app.store import get_vectorstore
-        _figure_server_port = start_figure_server()
-        get_vectorstore()  # eager-load embeddings + Chroma once
-        _log("warmup complete — tools ready")
+        get_vectorstore()
+        _log(f"warmup: vectorstore ready ({time.perf_counter() - t0:.1f}s)")
+
+        _log("warmup: building BM25 index ...")
+        from app.retriever import _get_bm25
+        _get_bm25("RA6M4")
+        _warmup_elapsed = time.perf_counter() - t0
+        _log(f"warmup: BM25 ready ({_warmup_elapsed:.1f}s) — all tools ready")
     except Exception as exc:  # noqa: BLE001
         _warmup_error = exc
-        _log(f"warmup FAILED: {exc!r}")
+        _warmup_elapsed = time.perf_counter() - t0
+        _log(f"warmup FAILED after {_warmup_elapsed:.1f}s: {exc!r}")
     finally:
-        _warmup_done.set()
+        _vs_ready.set()
 
 
-def _ensure_ready(timeout: float = 120.0) -> None:
-    """Block the calling tool until warmup finishes (first call only)."""
-    if not _warmup_done.wait(timeout=timeout):
-        raise TimeoutError("Backend warmup did not finish in time; try again.")
+def _ensure_vs_ready(timeout: float = 180.0) -> None:
+    """Block until the vectorstore + BM25 are loaded (search_um only)."""
+    if not _vs_ready.wait(timeout=timeout):
+        raise TimeoutError(
+            "Backend warmup did not finish in time — embedding model is still loading. "
+            "Please retry in a few seconds."
+        )
     if _warmup_error is not None:
         raise RuntimeError(f"Backend failed to initialise: {_warmup_error!r}")
+
+
+@mcp.tool()
+def server_status() -> dict:
+    """Return the current warmup state of the hardware-um MCP server.
+
+    Call this first to check whether search_um is ready before issuing a query.
+    register_lookup and get_figure are always available immediately.
+
+    Returns a dict with:
+      ready         — true when search_um is usable; false while still loading
+      status        — "ready" | "warming_up" | "failed"
+      message       — human-readable explanation
+      warmup_sec    — seconds warmup took (null while still in progress)
+      tools_always_available — tools that work regardless of warmup state
+    """
+    import time
+    if _warmup_error is not None:
+        return {
+            "ready": False,
+            "status": "failed",
+            "message": f"Warmup failed: {_warmup_error!r}. Restart the server.",
+            "warmup_sec": round(_warmup_elapsed, 1) if _warmup_elapsed is not None else None,
+            "tools_always_available": ["register_lookup", "get_figure"],
+        }
+    if _vs_ready.is_set():
+        return {
+            "ready": True,
+            "status": "ready",
+            "message": "All tools are ready.",
+            "warmup_sec": round(_warmup_elapsed, 1) if _warmup_elapsed is not None else None,
+            "tools_always_available": ["register_lookup", "get_figure"],
+        }
+    return {
+        "ready": False,
+        "status": "warming_up",
+        "message": (
+            "Embedding model and BM25 index are still loading. "
+            "register_lookup and get_figure are usable now. "
+            "Retry server_status in a few seconds before calling search_um."
+        ),
+        "warmup_sec": None,
+        "tools_always_available": ["register_lookup", "get_figure"],
+    }
 
 
 @mcp.tool()
 def search_um(query: str, chip_part: str, top_k: int = 6) -> list[dict] | dict:
     """Search the Hardware User Manual for prose, register, or figure content.
 
-    Returns a list of matching chunks, each with section_path, page, render_text,
+    Returns a list of matching chunks, each with section_title, render_text,
     and a citation field.  Returns a refusal dict when no relevant content is found.
 
     Args:
@@ -84,7 +139,7 @@ def search_um(query: str, chip_part: str, top_k: int = 6) -> list[dict] | dict:
         chip_part: Chip identifier, e.g. "RA6M4"
         top_k:     Number of results to return (default 6, max 10)
     """
-    _ensure_ready()
+    _ensure_vs_ready()
     from app.retriever import search as _search
     result = _search(query, chip_part, top_k)
     if isinstance(result, str):
@@ -100,50 +155,28 @@ def register_lookup(name: str, chip_part: str) -> list[dict]:
     Returns an empty list for unknown names.
 
     Args:
-        name:      Register name, e.g. "SCKCR", "IELSRn"
+        name:      Register name, e.g. "SCKDIVCR", "IELSRn" (fuzzy-matched against
+                   PDF-era names like "SCKCR" as a convenience fallback)
         chip_part: Chip identifier, e.g. "RA6M4"
     """
-    _ensure_ready()
     from app.register_tool import register_lookup as _register_lookup
     return _register_lookup(name, chip_part)
 
 
 @mcp.tool()
 def get_figure(figure_id: str, chip_part: str) -> dict | None:
-    """Retrieve a figure by its ID (e.g. 'Figure 13.2').
+    """Retrieve a figure by its ID (e.g. 'Figure 13.2.1').
 
-    Returns caption, VLM summary, image_path, and image_data (base64-encoded
-    PNG as a data URI: 'data:image/png;base64,...') so the agent can render
-    and analyse the figure image directly via vision.
+    Returns caption, section_title, citation, and svg (raw SVG markup read live
+    from the Smart Manual DB) so the agent can render the figure directly.
     Returns null for unknown figure IDs.
 
     Args:
-        figure_id: Figure identifier, e.g. "Figure 13.2"
+        figure_id: Figure identifier, e.g. "Figure 13.2.1"
         chip_part: Chip identifier, e.g. "RA6M4"
     """
-    _ensure_ready()
-    import base64
-    from pathlib import Path as _Path
     from app.figure_tool import get_figure as _get_figure
-    from app.figure_server import figure_url as _figure_url
-
-    result = _get_figure(figure_id, chip_part)
-    if result is None:
-        return None
-
-    result["image_url"] = _figure_url(result.get("image_path", ""))
-
-    # Embed image as base64 data URI so the agent can view it via vision
-    image_path = result.get("image_path", "")
-    if image_path:
-        _ROOT = _Path(__file__).resolve().parent.parent
-        abs_path = _ROOT / image_path
-        if abs_path.is_file():
-            raw = abs_path.read_bytes()
-            b64 = base64.b64encode(raw).decode("ascii")
-            result["image_data"] = f"data:image/png;base64,{b64}"
-
-    return result
+    return _get_figure(figure_id, chip_part)
 
 
 if __name__ == "__main__":

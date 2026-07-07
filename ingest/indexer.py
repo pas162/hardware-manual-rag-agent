@@ -15,23 +15,6 @@ from langchain_core.documents import Document
 COLLECTION_NAME = "hardware_um"
 BATCH_SIZE = 100
 
-# Front-matter and TOC sections that add noise without retrieval value
-_SKIP_SECTIONS = {
-    "§Contents",
-    "§Preface",
-    "§Notice",
-    "§General Precautions",
-    "§Cover",
-    "§Revision History",
-    "§Table of Contents",
-}
-
-
-def _is_noise_chunk(chunk: dict) -> bool:
-    sec = chunk.get("section_path") or ""
-    top_level = sec.split(" > ")[0]
-    return top_level in _SKIP_SECTIONS
-
 
 def load_chunks(chunks_jsonl: Path) -> list[dict]:
     chunks = []
@@ -43,17 +26,10 @@ def load_chunks(chunks_jsonl: Path) -> list[dict]:
 
 def chunk_to_document(chunk: dict) -> Document:
     metadata = {
-        "doc_id": chunk["doc_id"],
-        "revision": chunk["revision"],
         "chip_part": chunk["chip_part"],
-        "section_path": chunk["section_path"],
-        "page_start": chunk["page_start"],
-        "page_end": chunk["page_end"],
+        "section_title": chunk["section_title"],
         "element_type": chunk["element_type"],
-        "peripheral": chunk.get("peripheral", ""),
-        "register_name": chunk.get("register_name", ""),
         "figure_id": chunk.get("figure_id", ""),
-        "image_path": chunk.get("image_path", ""),
         "citation": chunk.get("citation", ""),
     }
     return Document(page_content=chunk["render_text"], metadata=metadata)
@@ -70,10 +46,8 @@ def build_index(
     """Embed all chunks and persist to Chroma. Returns total documents indexed."""
     chroma_dir.mkdir(parents=True, exist_ok=True)
 
-    all_chunks = load_chunks(chunks_jsonl)
-    chunks = [c for c in all_chunks if not _is_noise_chunk(c)]
-    skipped = len(all_chunks) - len(chunks)
-    print(f"Loaded {len(all_chunks)} chunks, skipped {skipped} noise chunks, indexing {len(chunks)}")
+    chunks = load_chunks(chunks_jsonl)
+    print(f"Loaded {len(chunks)} chunks, indexing all")
 
     embeddings = HuggingFaceEmbeddings(model_name=_EMBED_MODEL)
 
@@ -117,5 +91,5 @@ if __name__ == "__main__":
     results = vectorstore.similarity_search("clock generation circuit", k=3)
     print(f"\nCheckpoint: similarity_search('clock generation circuit', k=3) → {len(results)} results")
     for r in results:
-        print(f"  [{r.metadata.get('element_type')}] {r.metadata.get('section_path')} p{r.metadata.get('page_start')}")
+        print(f"  [{r.metadata.get('element_type')}] {r.metadata.get('section_title')}")
         print(f"    {r.page_content[:100]}")

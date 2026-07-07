@@ -1,5 +1,4 @@
-pymupdf
-pdfplumber
+beautifulsoup4
 chromadb
 langchain
 langchain-community
@@ -8,7 +7,6 @@ langchain-text-splitters
 langchain-huggingface
 langchain-openai
 sentence-transformers
-pillow
 sqlite-utils
 rank_bm25
 mcp

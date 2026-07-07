@@ -1,108 +1,180 @@
 """
-register_lookup(name, chip_part) — deterministic SQLite lookup.
+register_lookup(name, chip_part) — live SQLite lookup against the Smart Manual DB.
 
-Returns a list[dict] because a register name can appear in multiple peripherals.
+Returns a list[dict] because a register name can appear in multiple peripherals
+(or under duplicate module aliases, e.g. R_SYSC/R_SYSTEM at the same address).
 Each record includes a pre-formatted `citation` field.
+
+Registers are queried live from the Smart Manual DB — there is no local
+registers.db import step. The bit-function table (Bit | Symbol | Function | R/W)
+is already embedded in registerList.display_data for every register, so
+bitList is not joined; parsing registerList.display_data alone is sufficient
+and avoids families (e.g. IELSRn) that have zero matching bitList rows.
 """
 
 import json
 import sqlite3
 from pathlib import Path
 
-from app.store import get_registry
+from bs4 import BeautifulSoup
+from rapidfuzz import process, fuzz
 
-_ROOT = Path(__file__).resolve().parent.parent
-_DB_PATH = _ROOT / "data/store/registers.db"
+from app.smart_manual_locator import locate
 
-# ── SQLite connection singleton ───────────────────────────────────────────────
+# ── SQLite connection cache, keyed by chip_part ───────────────────────────────
 
-_con: sqlite3.Connection | None = None
-
-
-def _get_connection(db_path: Path = _DB_PATH) -> sqlite3.Connection:
-    """Return a cached SQLite connection, opening it on first call."""
-    global _con
-    if _con is None:
-        _con = sqlite3.connect(str(db_path), check_same_thread=False)
-        _con.row_factory = sqlite3.Row
-    return _con
+_connections: dict[str, sqlite3.Connection] = {}
 
 
-def _make_citation(doc_id: str, revision: str, section_path: str, page: int) -> str:
-    return f"【{doc_id} Rev.{revision} | {section_path} | p.{page}】"
+def _get_connection(chip_part: str) -> sqlite3.Connection:
+    """Return a cached SQLite connection for chip_part, opening it on first call."""
+    con = _connections.get(chip_part)
+    if con is None:
+        db_path = locate(chip_part)
+        con = sqlite3.connect(str(db_path), check_same_thread=False)
+        con.row_factory = sqlite3.Row
+        _connections[chip_part] = con
+    return con
 
 
-def register_lookup(name: str, chip_part: str, db_path: Path = _DB_PATH) -> list[dict]:
+def _make_citation(chip_part: str, register_symbol_name: str, register_name: str) -> str:
+    return f"【{chip_part} Smart Manual | {register_symbol_name} : {register_name}】"
+
+
+# ── Bit-table parsing ──────────────────────────────────────────────────────────
+
+def _parse_bit_fields(display_data: str) -> list[dict]:
+    """Extract bit fields from the frame-all (Bit|Symbol|Function|R/W) table.
+
+    Handles rowspan by forward-filling the bit/symbol/access columns across the
+    enumerated-value continuation rows.
+    """
+    soup = BeautifulSoup(display_data, "html.parser")
+    table = soup.find("table", class_="frame-all")
+    if table is None:
+        return []
+
+    fields: list[dict] = []
+    current: dict | None = None
+
+    for tr in table.find_all("tr"):
+        cells = tr.find_all(["td", "th"])
+        if not cells:
+            continue
+        texts = [c.get_text(strip=True) for c in cells]
+        if texts and texts[0] == "Bit":
+            continue  # header row
+
+        # A new bit-field row has 4 cells: Bit, Symbol, Function, R/W.
+        # A continuation (enumerated value) row has 1-2 cells: value, description.
+        if len(cells) >= 4:
+            bits, symbol, function, access = texts[0], texts[1], texts[2], texts[3]
+            current = {
+                "bits": bits,
+                "symbol": symbol,
+                "access": access,
+                "description": function,
+                "enum_values": [],
+            }
+            fields.append(current)
+        elif current is not None and texts:
+            current["enum_values"].append(" ".join(t for t in texts if t))
+
+    for f in fields:
+        if f["enum_values"]:
+            f["description"] = f["description"] + " — " + "; ".join(f["enum_values"])
+        del f["enum_values"]
+
+    return fields
+
+
+def _parse_reset_value(display_data: str) -> str:
+    """Best-effort extraction of the register's reset value from the bit-position table."""
+    soup = BeautifulSoup(display_data, "html.parser")
+    table = soup.find("table", class_="frame-none")
+    if table is None:
+        return ""
+
+    reset_bits: list[str] = []
+    for tr in table.find_all("tr"):
+        cells = [c.get_text(strip=True) for c in tr.find_all("td")]
+        if cells and cells[0] == "Value after reset:":
+            reset_bits.extend(c for c in cells[1:] if c)
+
+    if not reset_bits:
+        return ""
+    return "0b" + "".join(reset_bits)
+
+
+# ── Lookup ─────────────────────────────────────────────────────────────────────
+
+def _resolve_name(con: sqlite3.Connection, name: str) -> str:
+    """Fuzzy-match name against register_symbol_name if there's no exact/prefix hit.
+
+    Handles PDF-era names that differ from the Smart Manual's FSP convention
+    (e.g. SCKCR -> SCKDIVCR).
+    """
+    cur = con.execute(
+        "SELECT 1 FROM registerList WHERE register_symbol_name = ? OR register_symbol_name LIKE ? LIMIT 1",
+        (name, f"{name}%"),
+    )
+    if cur.fetchone() is not None:
+        return name
+
+    cur = con.execute("SELECT DISTINCT register_symbol_name FROM registerList")
+    all_names = [r["register_symbol_name"] for r in cur.fetchall()]
+    match = process.extractOne(name, all_names, scorer=fuzz.WRatio, score_cutoff=80)
+    return match[0] if match else name
+
+
+def register_lookup(name: str, chip_part: str) -> list[dict]:
     """Look up a register by name for a given chip_part.
 
-    Searches both exact match and LIKE '{name}%' to handle indexed variants (e.g. IELSRn).
-    Returns [] for unknown names.
+    Searches exact match and LIKE '{name}%' to handle indexed variants (e.g. IELSRn).
+    Deduplicates module aliases that share the same base address (e.g. R_SYSC/R_SYSTEM).
+    Returns [] for unknown names or a missing Smart Manual DB.
     """
-    registry = get_registry()
-    doc_info = registry.get(chip_part)
-    if doc_info is None:
+    try:
+        con = _get_connection(chip_part)
+    except FileNotFoundError:
         return []
 
-    doc_id = doc_info["doc_id"]
-    revision = doc_info["revision"]
+    resolved_name = _resolve_name(con, name)
 
-    if not db_path.exists():
-        return []
-
-    con = _get_connection(db_path)
-    cur = con.cursor()
-
-    # Try exact match first, then prefix match
-    cur.execute(
+    cur = con.execute(
         """
-        SELECT peripheral, register_name, address, size_bits, reset_value, access,
-               section_path, page_start, page_end
-        FROM registers
-        WHERE doc_id = ? AND (register_name = ? OR register_name LIKE ?)
-        ORDER BY peripheral, register_name
+        SELECT r.register_symbol_name, r.register_name, r.address, r.display_data,
+               r.module_symbol_name, m.module_base_address
+        FROM registerList r
+        LEFT JOIN moduleList m ON r.module_symbol_name = m.module_symbol_name
+        WHERE r.register_symbol_name = ? OR r.register_symbol_name LIKE ?
+        ORDER BY r.register_symbol_name
         """,
-        (doc_id, name, f"{name}%"),
+        (resolved_name, f"{resolved_name}%"),
     )
     rows = cur.fetchall()
 
     results = []
+    seen_addresses: set[tuple[str, str]] = set()
     for row in rows:
-        section_path = row["section_path"] or "§UNKNOWN"
-        page = row["page_start"] or 0
+        dedup_key = (row["register_symbol_name"], row["address"])
+        if dedup_key in seen_addresses:
+            continue
+        seen_addresses.add(dedup_key)
 
-        # Fetch bit fields
-        cur2 = con.cursor()
-        cur2.execute(
-            """
-            SELECT bits, symbol, access, reset, description
-            FROM bit_fields
-            WHERE peripheral = ? AND register_name = ?
-            ORDER BY rowid
-            """,
-            (row["peripheral"], row["register_name"]),
-        )
-        bit_fields = [
-            {
-                "bits": r["bits"],
-                "symbol": r["symbol"],
-                "access": r["access"],
-                "reset": r["reset"],
-                "description": r["description"],
-            }
-            for r in cur2.fetchall()
-        ]
+        bit_fields = _parse_bit_fields(row["display_data"])
+        reset_value = _parse_reset_value(row["display_data"])
+        access = bit_fields[0]["access"] if len(bit_fields) == 1 else ""
 
         results.append({
-            "peripheral": row["peripheral"],
-            "register_name": row["register_name"],
+            "peripheral": row["module_symbol_name"] or "",
+            "register_name": row["register_symbol_name"],
+            "full_name": row["register_name"],
             "address": row["address"],
-            "size_bits": row["size_bits"],
-            "reset_value": row["reset_value"],
-            "access": row["access"],
-            "section_path": section_path,
-            "page": page,
+            "reset_value": reset_value,
+            "access": access,
             "bit_fields": bit_fields,
-            "citation": _make_citation(doc_id, revision, section_path, page),
+            "citation": _make_citation(chip_part, row["register_symbol_name"], row["register_name"]),
         })
 
     return results
@@ -111,12 +183,12 @@ def register_lookup(name: str, chip_part: str, db_path: Path = _DB_PATH) -> list
 if __name__ == "__main__":
     import sys
 
-    name = sys.argv[1] if len(sys.argv) > 1 else "SCKCR"
+    name = sys.argv[1] if len(sys.argv) > 1 else "SCKDIVCR"
     chip = sys.argv[2] if len(sys.argv) > 2 else "RA6M4"
 
     results = register_lookup(name, chip)
     if results:
         for r in results:
-            print(json.dumps(r, indent=2))
+            print(json.dumps(r, indent=2, ensure_ascii=False))
     else:
         print(f"No results for {name!r} in {chip}")

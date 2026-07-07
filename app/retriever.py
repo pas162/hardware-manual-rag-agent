@@ -10,7 +10,7 @@ from pathlib import Path
 
 from rank_bm25 import BM25Okapi
 
-from app.store import get_vectorstore, get_registry
+from app.store import get_vectorstore
 
 _ROOT = Path(__file__).resolve().parent.parent
 _CHUNKS_JSONL = _ROOT / "data/parsed/chunks.jsonl"
@@ -26,21 +26,14 @@ _bm25: BM25Okapi | None = None
 _bm25_docs: list[dict] | None = None   # parallel list of chunk dicts
 
 
-def _get_bm25(chip_part: str) -> tuple["BM25Okapi", list[dict]]:
+def _get_bm25(chip_part: str) -> tuple["BM25Okapi", list[dict], list[int]]:
     """Return (BM25 index, ordered chunk list) for the given chip_part, built lazily."""
     global _bm25, _bm25_docs
     if _bm25 is None:
         chunks = []
         with _CHUNKS_JSONL.open(encoding="utf-8") as f:
             for line in f:
-                c = json.loads(line)
-                # Skip noise sections (same filter as indexer)
-                sec = c.get("section_path") or ""
-                top = sec.split(" > ")[0]
-                if top in {"§Contents", "§Preface", "§Notice", "§General Precautions",
-                           "§Cover", "§Revision History", "§Table of Contents"}:
-                    continue
-                chunks.append(c)
+                chunks.append(json.loads(line))
 
         tokenised = [c["render_text"].lower().split() for c in chunks]
         _bm25 = BM25Okapi(tokenised)
@@ -82,10 +75,6 @@ def search(query: str, chip_part: str, top_k: int = _DEFAULT_K) -> list[dict] | 
     top_k = min(top_k, _MAX_K)
     candidate_k = max(_CANDIDATE_K, top_k * 3)
 
-    registry = get_registry()
-    doc_info = registry.get(chip_part) or next(iter(registry.values()))
-    revision = doc_info["revision"]
-
     # ── Dense retrieval ───────────────────────────────────────────────────────
     vs = get_vectorstore()
     dense_results = vs.similarity_search_with_score(
@@ -95,11 +84,11 @@ def search(query: str, chip_part: str, top_k: int = _DEFAULT_K) -> list[dict] | 
     )
 
     if not dense_results:
-        return f"No relevant content found in {chip_part} UM Rev.{revision}."
+        return f"No relevant content found in {chip_part} Smart Manual."
 
     best_score = dense_results[0][1]
     if best_score > (2 * (1 - _SIMILARITY_THRESHOLD)):
-        return f"No relevant content found in {chip_part} UM Rev.{revision}."
+        return f"No relevant content found in {chip_part} Smart Manual."
 
     # Build id→chunk map from dense results
     id_to_chunk: dict[str, dict] = {}
@@ -111,13 +100,9 @@ def search(query: str, chip_part: str, top_k: int = _DEFAULT_K) -> list[dict] | 
         if cid not in id_to_chunk:
             id_to_chunk[cid] = {
                 "element_type": meta.get("element_type", ""),
-                "section_path": meta.get("section_path", ""),
-                "page": meta.get("page_start", 0),
+                "section_title": meta.get("section_title", ""),
                 "render_text": doc.page_content,
-                "peripheral": meta.get("peripheral", ""),
-                "register_name": meta.get("register_name", ""),
                 "figure_id": meta.get("figure_id", ""),
-                "image_path": meta.get("image_path", ""),
                 "citation": meta.get("citation", ""),
             }
         dense_ids.append(cid)
@@ -137,13 +122,9 @@ def search(query: str, chip_part: str, top_k: int = _DEFAULT_K) -> list[dict] | 
         if cid not in id_to_chunk:
             id_to_chunk[cid] = {
                 "element_type": c.get("element_type", ""),
-                "section_path": c.get("section_path", ""),
-                "page": c.get("page_start", 0),
+                "section_title": c.get("section_title", ""),
                 "render_text": c["render_text"],
-                "peripheral": c.get("peripheral", ""),
-                "register_name": c.get("register_name", ""),
                 "figure_id": c.get("figure_id", ""),
-                "image_path": c.get("image_path", ""),
                 "citation": c.get("citation", ""),
             }
         bm25_ids.append(cid)
@@ -163,6 +144,6 @@ if __name__ == "__main__":
         print(f"Refusal: {result}")
     else:
         for c in result:
-            print(f"  [{c['element_type']}] {c['section_path']} p{c['page']}  score={c['score']}")
+            print(f"  [{c['element_type']}] {c['section_title']}  score={c['score']}")
             print(f"    {c['render_text'][:100]}")
             print(f"    {c['citation']}")
