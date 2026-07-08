@@ -136,6 +136,11 @@ def search(query: str, chip_part: str, top_k: int = _DEFAULT_K) -> list[dict] | 
 if __name__ == "__main__":
     import sys
 
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        pass
+
     query = sys.argv[1] if len(sys.argv) > 1 else "clock generation circuit"
     chip = sys.argv[2] if len(sys.argv) > 2 else "RA6M4"
 
