@@ -6,12 +6,17 @@ Exposes three tools:
   register_lookup(name, chip_part)        — deterministic SQLite register lookup
   get_figure(figure_id, chip_part)        — retrieve a figure by ID
 
-Run:
+Run (SSE transport, keep running in the background):
   python -m app.mcp_server
 
+Server listens on http://localhost:8765/sse by default.
+Override with HOST / PORT / MCP_PATH environment variables.
+
 Inspect:
-  npx @modelcontextprotocol/inspector python -m app.mcp_server
+  npx @modelcontextprotocol/inspector
 """
+
+import os
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -23,6 +28,11 @@ from app.register_tool import register_lookup as _register_lookup
 from app.figure_tool import get_figure as _get_figure
 
 mcp = FastMCP("hardware-um")
+
+# --- Transport configuration (env-overridable) ---
+HOST = os.getenv("HOST", "localhost")
+PORT = int(os.getenv("PORT", "8765"))
+MCP_PATH = os.getenv("MCP_PATH", "/sse")
 
 # Eager-load the embedding model and vectorstore at startup so the first
 # tool call doesn't time out waiting for sentence-transformers to load.
@@ -76,4 +86,5 @@ def get_figure(figure_id: str, chip_part: str) -> dict | None:
 
 
 if __name__ == "__main__":
-    mcp.run()  # stdio transport by default
+    # SSE transport: one shared server instance for all clients.
+    mcp.run(transport="sse", host=HOST, port=PORT, path=MCP_PATH)

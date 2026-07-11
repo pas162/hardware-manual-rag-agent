@@ -1,14 +1,7 @@
 {
   "mcpServers": {
     "hardware-um": {
-      "command": "/path/to/.venv/bin/python",
-      "args": ["-m", "app.mcp_server"],
-      "cwd": "/path/to/hardware-manual-rag-agent",
-      "env": {
-        "PYTHONPATH": "/path/to/hardware-manual-rag-agent",
-        "HF_HUB_OFFLINE": "1",
-        "TRANSFORMERS_OFFLINE": "1"
-      }
+      "url": "http://localhost:8765/sse"
     }
   }
 }
