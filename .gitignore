@@ -36,7 +36,8 @@ docs/
 # POC report
 poc_report.html
 
-# Eval outputs — golden_set_v2 is dev-only (RA6M4-specific)
-eval/results.md
-eval/golden_set_v2.csv
+# Eval — dev-only, not shipped
+eval/
+
+# Eval outputs
 eval_output/
