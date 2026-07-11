@@ -1,11 +1,11 @@
 {
   "mcpServers": {
     "hardware-um": {
-      "command": "C:\\Son\\9_Tasks\\AI_POC\\.venv\\Scripts\\python.exe",
+      "command": "/path/to/.venv/bin/python",
       "args": ["-m", "app.mcp_server"],
-      "cwd": "C:\\Son\\9_Tasks\\AI_POC",
+      "cwd": "/path/to/hardware-manual-rag-agent",
       "env": {
-        "PYTHONPATH": "C:\\Son\\9_Tasks\\AI_POC",
+        "PYTHONPATH": "/path/to/hardware-manual-rag-agent",
         "HF_HUB_OFFLINE": "1",
         "TRANSFORMERS_OFFLINE": "1"
       }

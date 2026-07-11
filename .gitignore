@@ -5,42 +5,33 @@ __pycache__/
 .venv/
 *.egg-info/
 
-# Data — large binary/generated files, not source code
-data/store
-data/parsed
-data/figures
-data/pdfs
-
-# Keep registry
-data/registry.json
-!data/registry.json
-
-# Env
+# Environment
 .env
 *.env
 
-# Claude Code session state
-.claude/
+# Data — generated artifacts, PDFs, and local stores (not source)
+data/pdfs/
+data/parsed/
+data/figures/
+data/store/
 
-# IDE
+# Keep the registry template (it is source, not a generated artifact)
+!data/registry.json
+
+# IDE / OS
 .vscode/settings.json
-*.suo
-.vs/
-
-# Evaluation / benchmark outputs
-eval_output/
-eval_camelot.py
-.eval_cache.db
-
-# OS
 .DS_Store
 Thumbs.db
 
-.playwright-mcp
-.rica
-
-refresh_pipeline.cmd
-
+# MCP local config (contains machine-specific paths)
 .mcp.json
 
-docs
+# Docs (internal planning notes)
+docs/
+
+# POC report
+poc_report.html
+
+# Eval outputs
+eval/results.md
+eval_output/
