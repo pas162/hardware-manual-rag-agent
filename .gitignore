@@ -19,9 +19,13 @@ data/store/
 !data/registry.json
 
 # IDE / OS
-.vscode/settings.json
+.vscode/
 .DS_Store
 Thumbs.db
+
+# AI assistant local config
+.claude/
+.rica/
 
 # MCP local config (contains machine-specific paths)
 .mcp.json
@@ -32,6 +36,7 @@ docs/
 # POC report
 poc_report.html
 
-# Eval outputs
+# Eval outputs — golden_set_v2 is dev-only (RA6M4-specific)
 eval/results.md
+eval/golden_set_v2.csv
 eval_output/
