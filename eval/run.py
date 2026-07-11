@@ -130,7 +130,7 @@ def run_eval(golden_csv: Path, results_md: Path) -> float:
 
     for row in rows:
         question = row["question"]
-        tool = row.get("tool") or row.get("expected_tool", "")
+        tool = row["tool"]
 
         try:
             if tool == "search_um":
@@ -206,21 +206,10 @@ def _write_results(
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--golden", type=Path, default=Path("eval/golden_set_v2.csv"),
-                        help="Path to golden set CSV (default: eval/golden_set_v2.csv)")
-    parser.add_argument("--results", type=Path, default=Path("eval/results.md"))
-    args = parser.parse_args()
-
-    # Fall back to v1 if v2 not yet generated
-    golden_csv = args.golden
-    if not golden_csv.exists() and golden_csv == Path("eval/golden_set_v2.csv"):
-        golden_csv = Path("eval/golden_set.csv")
-        print(f"golden_set_v2.csv not found, falling back to {golden_csv}")
+    golden_csv = Path("eval/golden_set.csv")
+    results_md = Path("eval/results.md")
 
     print(f"Running eval against {golden_csv} ...")
-    rate = run_eval(golden_csv, args.results)
-    print(f"\nResults written to {args.results}")
+    rate = run_eval(golden_csv, results_md)
+    print(f"\nResults written to {results_md}")
     sys.exit(0 if rate >= 0.80 else 1)

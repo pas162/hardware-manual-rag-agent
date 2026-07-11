@@ -1,13 +1,13 @@
 {
   "mcpServers": {
-    "playwright": {
-      "command": "npx",
-      "args": ["@playwright/mcp@latest", "--browser", "msedge"]
-    },
     "hardware-um": {
-      "url": "http://127.0.0.1:8765/sse",
+      "command": "C:\\Son\\9_Tasks\\AI_POC\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "app.mcp_server"],
+      "cwd": "C:\\Son\\9_Tasks\\AI_POC",
       "env": {
-        "SMART_MANUAL_AUTO_SHOW": "0"
+        "PYTHONPATH": "C:\\Son\\9_Tasks\\AI_POC",
+        "HF_HUB_OFFLINE": "1",
+        "TRANSFORMERS_OFFLINE": "1"
       }
     }
   }

@@ -8,7 +8,7 @@ No cloud hosting. No separate UI. The agent calls the tools; the developer stays
 
 ## The Problem It Solves
 
-Embedded developers spend significant time hunting through hardware UMs for register addresses, bit-field meanings, and peripheral diagrams. Current options:
+Embedded developers spend significant time hunting through 1500+ page Hardware UMs for register addresses, bit-field meanings, peripheral diagrams, and cross-section context. Current options:
 
 - **Manual PDF search** — slow, easy to miss related context across sections
 - **Generic LLM chat** — hallucinates register details confidently and without warning
@@ -16,20 +16,12 @@ Embedded developers spend significant time hunting through hardware UMs for regi
 
 This POC turns the UM into a **set of callable tools** that any AI agent can invoke mid-conversation, with verifiable, source-linked answers.
 
-## Where the Data Comes From
-
-The Renesas Smart Manual VS Code extension already downloads a structured SQLite database per chip to local disk. Rather than re-parsing the PDF, this POC reads that database directly:
-
-- **Prose & general tables** — parsed from `freeWord.display_data` HTML, with register bit-tables and figures stripped out first (register bit-tables are redundant with `register_lookup`; `freeWord.keyword` mixes all of this into one text blob, so it isn't used directly) → chunked and embedded into ChromaDB
-- **Figures** — embedded as native `<svg>` inside the DB's HTML content → caption indexed for discovery, SVG read live on request (no files on disk, no server)
-- **Registers & bit-fields** (`registerList` / `bitList`) → queried live at request time, no import step
-
 ## How It Works — 30-Second Version
 
 ```
-Smart Manual DB (SQLite) ──▶ freeWord + figures ──▶ chunk ──▶ embed ──▶ ChromaDB
+PDF ──▶ parse (text + tables + figures) ──▶ embed ──▶ ChromaDB
                      │
-                     └──▶ registerList / bitList — queried live, no copy
+                     └──▶ SQLite (register exact values)
                                     │
                           MCP Server (local process)
                           ┌─────────────────────────┐
@@ -47,39 +39,36 @@ Smart Manual DB (SQLite) ──▶ freeWord + figures ──▶ chunk ──▶ 
 
 Three tools, one local server:
 - **`search_um`** — semantic search over prose + figures, returns cited chunks
-- **`register_lookup`** — deterministic exact lookup by register name, queried live
-- **`get_figure`** — retrieve a figure by ID with its native SVG image and caption
+- **`register_lookup`** — deterministic exact lookup by register name from SQLite
+- **`get_figure`** — retrieve a figure by ID with image path and VLM caption
 
 ## Key Design Choices
 
 | Choice | Why |
 |---|---|
-| Smart Manual DB as the data source | Already structured and already on disk — no PDF re-parsing needed |
-| Registers queried live, no local copy | The source data is already normalized SQLite |
-| No fallback in the DB locator | Keeps the tool honest about what's actually available locally |
 | MCP server as primary interface | Agent calls tools mid-conversation — no context-switching, no separate UI |
-| Single Chroma collection (prose + figure) | One retrieval hop, simpler filtering |
-| Citation baked into tool response | Every returned item carries a citation the agent can't lose |
-| Figures kept as native SVG | Source figures are vector — rasterizing would lose fidelity |
-| Local sentence-transformers embeddings (`all-MiniLM-L6-v2`) | Fully offline — no external API call at serve-time |
+| SQLite for registers | Eliminates the #1 hallucination risk — wrong addresses / reset values |
+| Single Chroma collection (prose + register_row + figure) | One retrieval hop, simpler filtering |
+| Citation validator in tool response | Every chunk returned already carries `【DOC | § | p】` — the agent can't lose it |
+| Similarity threshold (< 0.30 → refusal string) | Tool returns a refusal message rather than low-confidence chunks |
+| VLM one-shot per figure, SHA-256 cache | Figures are searchable without a multimodal retriever |
 | Local-only for POC | No server, no auth, no cloud cost — runs on developer's machine |
 
 ## Stack
 
-Python 3.11 · ChromaDB · sentence-transformers (`all-MiniLM-L6-v2`) · SQLite · BeautifulSoup · **FastMCP**
+Python 3.11 · LangChain · ChromaDB · PyMuPDF · pdfplumber · OpenAI (`gpt-4o-mini`, `text-embedding-3-small`) · SQLite · **MCP SDK (`mcp` / `fastmcp`)**
 
 ## MCP Tool Signatures
 
 ```python
-search_um(query: str, chip_part: str, top_k: int = 6) -> list[Chunk] | dict
-# Returns top-k chunks with section_title, render_text, citation string
-# Returns {"refusal": "..."} when similarity < 0.30
+search_um(query: str, chip_part: str, top_k: int = 6) -> list[Chunk]
+# Returns top-k chunks with section_path, page, render_text, citation string
 
 register_lookup(name: str, chip_part: str) -> list[RegisterRecord]
-# Returns register record(s) queried live from the Smart Manual DB: address, bit_fields, citation
+# Returns full register record(s): address, reset, bit_fields, section, page
 
-get_figure(figure_id: str, chip_part: str) -> FigureRecord | None
-# Returns figure caption, SVG image, section_title, citation
+get_figure(figure_id: str, chip_part: str) -> FigureRecord
+# Returns figure caption, VLM summary, image_path, section_path, page
 ```
 
 ## Scope
@@ -89,35 +78,37 @@ get_figure(figure_id: str, chip_part: str) -> FigureRecord | None
 | MCP tool server (local) | Cloud hosting / remote deployment |
 | Prose Q&A via `search_um` | Code generation / FSP driver config |
 | Register lookup via `register_lookup` | Multi-UM cross-synthesis |
-| Figure recall via `get_figure` | Chips without a local Smart Manual DB |
-| Claude Desktop + VS Code Copilot demo | GPU-accelerated embedding |
-
-## Current State
-
-- **Chip:** RA6M4, sourced from its Smart Manual DB (not the PDF)
-- **Architecture:** finalized; implementation in progress
-- **Previous baseline:** an earlier PDF-based pipeline reached 100% pass rate (69/69) on an earlier golden set — that set will be updated for the new register naming and citation format, then re-run against this approach
+| Figure recall via `get_figure` | ColPali-style multimodal retrieval |
+| Claude Desktop + VS Code Copilot demo | Eval harness, scaling, GPU |
 
 ## Deliverables
 
 - MCP server (`app/mcp_server.py`) runnable as a local process
-- `.mcp.json` config for VS Code / RICA IDE integration
-- Ingestion pipeline (`python -m ingest.run_all`) for prose + figures
-- Golden set (`eval/golden_set_v2.csv`) + eval runner (`eval/run.py`)
-- All tool responses carry a `citation` field
+- `claude_desktop_config.json` snippet and VS Code MCP extension config for demo setup
+- Ingestion pipeline (one-shot, ~2 hrs on a laptop)
+- 40-question golden set + smoke eval script (calls MCP tools directly)
+- All tool responses carry `【DOC | § | p】` citations
 
-## Running the System
+## Success Criteria
 
-```bash
-# 1. Ingest prose + figures (one-shot)
-python -m ingest.run_all
+- Agent (Claude Desktop or Copilot) can answer prose, register, and figure questions using only the MCP tools — no external knowledge needed
+- ≥ 80% pass rate on 40-question golden set
+- `register_lookup` returns verbatim register data — zero hallucinated addresses or bit values
+- Tool returns a refusal string (never empty chunks) when similarity < 0.30
+- VLM captioning cost < $5 for one full UM
 
-# 2. Run eval
-python -m eval.run
+## Demo Flow (on developer's machine)
 
-# 3. Start MCP server (used by IDE agent)
-python -m app.mcp_server
-```
+1. Run ingestion once: `python -m ingest.run`
+2. Start MCP server: `python -m app.mcp_server`
+3. Open Claude Desktop (or Copilot Chat) — UM tools appear automatically
+4. Ask: *"What does the SCKCR register control?"* → agent calls `register_lookup`, returns cited answer
+5. Ask: *"Show me the clock generation block diagram"* → agent calls `get_figure`, returns caption + image path
+6. Ask: *"How do I configure AGT in one-shot mode?"* → agent calls `search_um`, returns cited prose chunks
+
+## Timeline
+
+~2 weeks, one engineer, no GPU required, local machine only.
 
 ---
 

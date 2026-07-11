@@ -2,114 +2,233 @@
 
 *Part of: [POC_RAG_Hardware_UM_Plan.md](POC_RAG_Hardware_UM_Plan.md)*
 
-> Replaces the earlier PDF-parsing task list. Registers/bit-fields, prose, and figures are now all sourced from the Smart Manual DB instead of the PDF.
+> Execute tasks **in order**. Verify each checkpoint before proceeding. **Stop and report** if a checkpoint fails.
 
 ---
 
-## Task 0 — Repo Bootstrap ✅
+## Task 0 — Repo Bootstrap
 
 **Actions:**
-1. Create folders: `ingest/`, `app/`, `eval/`, `data/parsed/`, `data/store/`
-2. Create `requirements.txt`
-3. Create `.env` with `EMBED_MODEL`, `HF_HUB_OFFLINE=1`
-4. Install dependencies: `pip install -r requirements.txt`
+1. Create folders: `ingest/`, `app/`, `eval/`, `data/pdfs/`, `data/figures/`, `data/parsed/`, `data/store/`
+2. Create `requirements.txt` (see [Prerequisites in Spec](POC_RAG_Spec.md#1-prerequisites))
+3. Create `.env` with `OPENAI_API_KEY=...`
+4. Install dependencies
 
-**Checkpoint:** `python -c "import chromadb, langchain, fastmcp, bs4"` exits 0.
+**Checkpoint:** `python -c "import pymupdf, pdfplumber, chromadb, langchain"` exits 0.
 
 ---
 
-## Task 1 — Smart Manual DB Locator ⬜
+## Task 1 — Register the UM
 
 **Actions:**
-Implement `app/smart_manual_locator.py`:
-- `locate(chip_part: str) -> Path` — resolves to
-  `%APPDATA%\Code\User\globalStorage\renesaselectronicscorporation.renesas-smart-manual\downloads\{chip_part}\{chip_part}_en`
-- No fallback — raise/return an explicit error if the file doesn't exist.
+1. Copy `r01uh0890ej0150-ra6m4.pdf` to `data/pdfs/`
+2. Create `data/registry.json` (see [§3.3 in Spec](POC_RAG_Spec.md#33-document-registry-dataregistryjson))
 
-**Checkpoint:** `locate("RA6M4")` returns a path to a valid SQLite file (`sqlite3.connect(...).execute("select 1")` succeeds).
+**Checkpoint:** `registry.json` is valid JSON; `pymupdf.open(...)` reports > 1500 pages.
 
 ---
 
-## Task 2 — Register Lookup Tool (live query) ⬜
+## Task 2 — Parse Text + TOC
 
 **Actions:**
-Rewrite `app/register_tool.py`:
-1. Use the locator to open a connection to `RA6M4_en` at request time
-2. Query `registerList` for exact + prefix matches (`LIKE 'name%'`) on `register_symbol_name`
-3. Join `bitList` on `register_symbol_name`; parse each row's `display_data` HTML with BeautifulSoup to extract R/W, reset, and enumerated values (not present as plain columns)
-4. Attach a citation (no page number): `【{chip_part} Smart Manual | {register_name}】`
+Implement `ingest/parser_text.py` → emit `data/parsed/pages.jsonl`, one record per text block:
+```json
+{"page": 51, "bbox": [...], "text": "...", "section_path": "§13 > §13.2"}
+```
+Use `doc.get_toc()` to assign `section_path` (longest TOC entry whose page ≤ current page).
 
-**Checkpoint:** `register_lookup("IELSR0", "RA6M4")` returns a record with non-empty `bit_fields`; `register_lookup("SCKDIVCR", "RA6M4")` succeeds (note: PDF's `SCKCR` no longer applies).
+**Checkpoint:** ≥ 95% of blocks on pages 50–100 have non-null `section_path`; print 3 random samples.
 
 ---
 
-## Task 3 — Prose + General-Table Ingestion ⬜
-
-> **Revised after inspecting the live DB.** `freeWord.keyword` is *not* clean prose — it's a flattened text soup that inlines register bit-table numbers/labels and SVG figure-label text into the surrounding prose with no separators. Verified on RA6M4: e.g. the `IELSRn` section's `keyword` reads `...Value after reset: 0 0 0 0...Bit Symbol Function R/W 8:0 IELS[8:0]...`, and the `1.2. Block Diagram` section's `keyword` reads `...Memory Memory 1 MB code flash 1 MB code flash 8 KB data flash...` (every text label inside that figure's `<svg>`, flattened). Using `keyword` as-is would dilute `search_um` with table/diagram-label noise.
->
-> Parsing `freeWord.display_data` (HTML) instead lets us split cleanly — but naively stripping *all* `<table>` tags is also wrong: of the 2,089 `freeWord` rows, 1,020 contain a `<table>`, and **392 of those are not register-titled sections** — e.g. `1.4. Function Comparison`, `1.5. Pin Functions`, `2.7.2. Peripheral Address Map`. These are genuine lookup tables with no equivalent in `register_lookup`; discarding them would silently lose real content. Only register bit-tables (redundant with `register_lookup`) should be dropped.
+## Task 3 — Detect Register Tables
 
 **Actions:**
-Implement `ingest/parser_smart_manual_text.py`:
-1. Read `title`, `display_data` from every `freeWord` row via the locator.
-2. Parse `display_data` with BeautifulSoup. For each `<table>`, classify it:
-   - **register_table** — its `<th>` header row starts with "Bit" (the `Bit | Symbol | Function | R/W` layout used throughout `bitList`), OR it's the borderless bit-position diagram (`<table class="frame-none">`, no `<th>` at all) inside a register-titled section.
-   - **general_table** — everything else (function comparison, pin lists, address maps, etc.)
-3. `.decompose()` every `register_table` and every `<figure>` block (figures are handled by Task 4). Leave `general_table`s in the tree.
-4. Serialize each surviving `general_table` (pipe-delimited, same format as the old `ingest/chunker.py::_serialize_table`) to `data/parsed/tables_sm.jsonl`: `{"section_title": title, "table_title": <caption or "">, "rows_text": serialized}`.
-5. Take the tree's remaining text (`.get_text(separator=" ", strip=True)`) as clean prose. Emit to `data/parsed/pages_sm.jsonl`: `{"section_title": title, "text": cleaned_text}`. Skip rows with empty cleaned text (pure-table/pure-figure sections).
+Implement `ingest/parser_tables.py` using pdfplumber. For each page run `extract_tables()`. Classify as a register table when the header row matches ≥ 3 of:
 
-**Checkpoint:** `pages_sm.jsonl` row count ≈ `freeWord` row count (2,089, minus rows that clean to empty). `tables_sm.jsonl` contains the ~392 general/lookup tables, with zero register bit-tables leaking in. Spot-check that `IELSRn`'s prose no longer contains bit-table numbers, and `1.2. Block Diagram`'s prose no longer contains SVG label soup.
+`{Bit, Bit Name, Symbol, Value, R/W, Reset, Description}` (case-insensitive)
+
+Emit raw table JSON to `data/parsed/tables.jsonl`.
+
+**Checkpoint:** ≥ 50 register tables detected; spot-check that known registers (`SCKCR`, `IELSRn`, `PORT0.PCNTR1`) appear.
 
 ---
 
-## Task 4 — Figure Discovery Index ⬜
+## Task 4 — Build Register Schema + SQLite
 
 **Actions:**
-Implement `ingest/parser_smart_manual_figures.py`:
-1. Scan `display_data` HTML in `freeWord`, `registerList`, and `bitList` for `<figure>` blocks
-2. For each, extract the `<figcaption>` text and a locator back to its source row (table + row key) — do **not** extract or save the `<svg>` itself; it stays in the DB and is read live by `get_figure` (Task 6)
-3. Emit one figure chunk per figure: `render_text = "[{section_title} > {figure_id}] {caption}"`
+Implement `ingest/register_schema.py`. For each register table:
+1. Parse the header block immediately above (register name, address, reset, access) from prose
+2. Merge with bit-field rows
+3. Persist to `data/store/registers.db` using the schema in [§3.2 in Spec](POC_RAG_Spec.md#32-sqlite-schema-registersdb)
 
-**Checkpoint:** Each figure chunk has a non-empty caption and a resolvable row locator.
+**Checkpoint:** `SELECT COUNT(*) FROM registers` ≥ 50; `register_lookup("SCKCR")` returns a record with non-empty `bit_fields`.
 
 ---
 
-## Task 5 — Chunking + Embedding ⬜
+## Task 5 — Extract Figures + VLM Captions
 
 **Actions:**
-- `ingest/chunker.py` — three chunk types now: `prose` (`RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=80)` over `pages_sm.jsonl`), `table` (one chunk per `tables_sm.jsonl` record — the preserved general/lookup tables), `figure` (one per figure discovery record). Register bit-tables are intentionally excluded — `register_lookup` serves them live.
-- `ingest/indexer.py` — reuse existing embedding + Chroma persistence, unchanged.
+Implement `ingest/parser_figures.py`:
 
-**Checkpoint:** `Chroma(...).similarity_search("clock generation circuit", k=3)` returns ≥ 1 relevant hit. `Chroma(...).similarity_search("function comparison pin count package", k=3)` surfaces the `1.4. Function Comparison` table chunk.
+1. For each page, call `page.get_images(full=True)`; save each to `data/figures/{doc_id}/p{page}_{xref}.png` (skip images < 64×64 px)
+2. Search same-page text blocks for nearest match of `^(Figure|Fig\.)\s+\d+\.\d+\b`; record `figure_id` + caption
+3. Call `gpt-4o-mini` vision once per image with this prompt:
+   ```
+   This is a figure from a semiconductor chip Hardware User's Manual.
+   In ≤4 sentences, describe:
+   1) figure type (block / timing / pin-out / schematic / state machine / waveform / table-as-image / other)
+   2) main blocks, signals, pins, or peripherals labeled
+   3) obvious relationships (arrows, buses, clock paths, hierarchy)
+   4) any verbatim text labels you can read
+   Do NOT invent labels. If unsure, say "unclear".
+   Return JSON: {"type":"...","summary":"...","labels_seen":[...]}
+   ```
+4. Cache by SHA-256 of image bytes in `data/figures/cache.json`
+5. Emit one figure chunk: `render_text = "[{section_path} > {figure_id}] {caption}. {vlm_summary}"`
+
+**Checkpoint:** ≥ 90% of extracted images have a paired `figure_id`; cache file populated; cost report printed (target < $5 for one UM).
 
 ---
 
-## Task 6 — Figure Tool (live query, no server) ⬜
+## Task 6 — Chunking
 
 **Actions:**
-- `app/figure_tool.py` — `get_figure(figure_id, chip_part)`: Chroma lookup on the discovery index to find which row (`freeWord`/`registerList`/`bitList`) holds the figure, then a live query + BeautifulSoup re-parse of that row's `display_data` to extract the `<svg>`, returned directly as an `image/svg+xml` data URI in the tool response.
-- No figure server needed — the DB, the MCP process, and the agent are all on the same local machine, so there's no reason to serve files over HTTP.
+Implement `ingest/chunker.py` producing three chunk types:
 
-**Checkpoint:** `get_figure("Figure 13.2", "RA6M4")` returns a valid SVG payload.
+| Type | Strategy | `render_text` format |
+|---|---|---|
+| `prose` | `RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=80)` over section bodies grouped by `section_path` | chunk text prefixed with `[section_path]` |
+| `register_row` | One per bit-field row | `[{section_path} > {register_name}] bits {bits} \| {symbol} \| {access} \| reset {reset} \| {description}` |
+| `figure` | One per extracted figure (from Task 5) | `[{section_path} > {figure_id}] {caption}. {vlm_summary}` |
+
+Write all chunks to `data/parsed/chunks.jsonl` with the full 10-field metadata envelope (see [§3.1 in Spec](POC_RAG_Spec.md#31-chunk-metadata-envelope-10-fields)).
+
+**Checkpoint:** `chunks.jsonl` contains all three `element_type` values; total chunk count printed.
 
 ---
 
-## Task 7 — MCP Server ⬜
+## Task 7 — Embed + Index in Chroma
 
 **Actions:**
-Confirm `app/mcp_server.py` still exposes `search_um`, `register_lookup`, `get_figure` with the same signatures — no agent-facing changes needed, only the implementations underneath change.
+Implement `ingest/indexer.py`:
+- Use `langchain_openai.OpenAIEmbeddings(model="text-embedding-3-small")`
+- Persist to `data/store/chroma` via `langchain_community.vectorstores.Chroma`
+- Batch embed 100 chunks at a time
+
+**Checkpoint:** `Chroma(...).similarity_search("clock generation circuit", k=3)` returns ≥ 1 hit from the Clock Generation Circuit section.
+
+---
+
+## Task 8 — Register Lookup Tool
+
+**Actions:**
+Implement `app/register_tool.py`:
+- `register_lookup(name: str, chip_part: str) -> list[dict]` — returns a list because cross-peripheral name collisions are possible
+- Queries `data/store/registers.db`; filters by `chip_part` via the `doc_id` join on `data/registry.json`
+- Attaches a `citation` field to each returned record
+
+**Checkpoint:** Returns expected structured record for `IELSRn` with non-empty `bit_fields` and a `citation`; returns `[]` for an unknown name; `register_lookup("SCKCR", "RA6M4")` returns ≥ 1 record.
+
+---
+
+## Task 9 — Retriever + Figure Tool
+
+**Actions:**
+
+**`app/retriever.py`**
+- Wrap `Chroma.as_retriever(search_kwargs={"k": 6, "filter": {"chip_part": chip_part}})`
+- After retrieval, check top similarity score; if < 0.30 return the refusal string:
+  `"No relevant content found in {chip_part} UM Rev.{revision}."`
+- Attach a pre-formatted `citation` field to every returned chunk:
+  `【{doc_id} Rev.{revision} | §{section_path} | p.{page}】`
+
+**`app/figure_tool.py`**
+- `get_figure(figure_id: str, chip_part: str) -> dict | None`
+- Query Chroma with `filter={"figure_id": figure_id, "chip_part": chip_part}`
+- Return `FigureRecord` (see [§3 in Spec](POC_RAG_Spec.md#3-mcp-tool-contracts)) or `None`
+
+**Checkpoint:** Direct Python calls:
+- `retriever.search("clock generation circuit", chip_part="RA6M4")` returns ≥ 1 chunk with a `citation` field
+- `get_figure("Figure 13.2", chip_part="RA6M4")` returns a non-null record with `image_path` and `citation`
+- `retriever.search("xyzzy gibberish", chip_part="RA6M4")` returns the refusal string
+
+---
+
+## Task 10 — MCP Server
+
+**Actions:**
+Implement `app/mcp_server.py` using `fastmcp`:
+
+```python
+from fastmcp import FastMCP
+mcp = FastMCP("hardware-um")
+
+@mcp.tool()
+def search_um(query: str, chip_part: str, top_k: int = 6) -> list[dict]:
+    """Search the Hardware User Manual for prose, register, or figure content."""
+    ...
+
+@mcp.tool()
+def register_lookup(name: str, chip_part: str) -> list[dict]:
+    """Look up a register by name. Returns address, reset value, and all bit fields."""
+    ...
+
+@mcp.tool()
+def get_figure(figure_id: str, chip_part: str) -> dict | None:
+    """Retrieve a figure by its ID (e.g. 'Figure 13.2'). Returns caption, VLM summary, and image path."""
+    ...
+
+if __name__ == "__main__":
+    mcp.run()  # stdio transport by default
+```
+
+Add agent config files (see [§2.3 in Spec](POC_RAG_Spec.md#23-agent-configuration-local-demo)):
+- `claude_desktop_config_snippet.json` — snippet to paste into Claude Desktop config
+- `.vscode/mcp.json` — VS Code Copilot Chat MCP config
 
 **Checkpoint:**
 1. `python -m app.mcp_server` starts without error
-2. All three tools callable via MCP inspector
+2. Using the MCP inspector (`npx @modelcontextprotocol/inspector python -m app.mcp_server`), call each tool manually:
+   - `search_um("What does IELSRn.IELS select?", "RA6M4")` → returns chunks citing §13.2.4, page in the 280s
+   - `register_lookup("SCKCR", "RA6M4")` → returns record with address and `bit_fields`
+   - `get_figure("Figure 13.2", "RA6M4")` → returns caption and `image_path`
+3. Add server to Claude Desktop config; confirm the 3 tools appear in Claude's tool list
 
 ---
 
-## Task 8 — Update Golden Set + Re-run Eval ⬜
+## Task 11 — Golden Set & Smoke Eval
 
 **Actions:**
-1. Update `eval/golden_set_v2.csv`: fix renamed registers (e.g. `SCKCR` → `SCKDIVCR`), drop page-number expectations, update figure IDs if needed
-2. `python -m eval.run`
+1. Create `eval/golden_set.csv` with 40 rows:
 
-**Checkpoint:** Pass rate reported in `eval/results.md`; investigate any drop vs. the previous PDF-based baseline (100%, 69/69).
+   | Column | Description |
+   |---|---|
+   | `question` | The test question |
+   | `tool` | `search_um` \| `register_lookup` \| `get_figure` |
+   | `expected_section` | e.g. `§13.2.4` |
+   | `expected_page_range` | e.g. `280-285` |
+   | `expected_register` | e.g. `IELSRn` |
+   | `expected_figure_id` | e.g. `Figure 13.2` |
+
+   Distribution: 10 prose · 10 register · 10 figure · 10 cross-section
+
+2. Implement `eval/run.py`: call each MCP tool **directly** (no agent in the loop), score pass/fail by:
+   - Presence of expected `section_path` substring in returned chunks
+   - Page within `expected_page_range`
+   - For registers: `register_name` present in returned record
+   - For figures: correct `figure_id` in returned record
+
+**Checkpoint:** Pass rate ≥ 80%; failures categorized in `eval/results.md` using the categories in [§7 of Spec](POC_RAG_Spec.md#7-eval-criteria).
+
+---
+
+## Task 12 (Stretch) — Second UM Smoke Test
+
+**Actions:**
+1. Add `r01uh1064ej0110-ra8p1.pdf` to `data/pdfs/`
+2. Append to `registry.json` with `chip_part="RA8P1"`
+3. Re-run ingestion
+4. Verify the UI chip picker switches collections cleanly
+
+**Checkpoint:** Both chips selectable in the UI; the 3 demo questions work on RA8P1 with citations to RA8P1 only. No cross-UM synthesis.

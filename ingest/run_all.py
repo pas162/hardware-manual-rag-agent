@@ -2,27 +2,28 @@
 Full ingestion pipeline runner.
 
 Run from project root:
-  python -m ingest.run_all              # full pipeline, chip=RA6M4
-  python -m ingest.run_all RA6M4        # explicit chip_part
-  python -m ingest.run_all --skip-embed # skip ChromaDB indexing
+  python -m ingest.run_all                  # full pipeline
+  python -m ingest.run_all --skip-figures   # skip figure extraction
+  python -m ingest.run_all --skip-embed     # skip ChromaDB indexing
 
 Steps:
-  1. parser_smart_manual_text    -> data/parsed/pages_sm.jsonl, tables_sm.jsonl
-  2. parser_smart_manual_figures -> data/parsed/figures_sm.jsonl
-  3. chunker                     -> data/parsed/chunks.jsonl
-  4. indexer                     -> data/store/chroma/
-
-Registers are not part of this pipeline — register_lookup queries the Smart
-Manual DB live (see app/register_tool.py).
+  1. parser_text    -> data/parsed/pages.jsonl
+  2. parser_figures -> data/parsed/figures.jsonl  (must run before tables)
+  3. parser_tables  -> data/parsed/tables.jsonl   (uses figures to exclude figure zones)
+  4. register_schema -> data/store/registers.db
+  5. chunker        -> data/parsed/chunks.jsonl
+  6. indexer        -> data/store/chroma/
 """
 
+import json
 import sys
 import time
 from pathlib import Path
 
-from app.smart_manual_locator import locate
-from ingest.parser_smart_manual_text import parse_freewords
-from ingest.parser_smart_manual_figures import parse_figures
+from ingest.parser_text import parse_text
+from ingest.parser_figures import parse_figures
+from ingest.parser_tables import parse_tables
+from ingest.register_schema import build_register_db
 from ingest.chunker import build_chunks
 from ingest.indexer import build_index
 
@@ -38,36 +39,83 @@ def _done(t0: float, summary: str):
     print(f"  -> {summary}  ({elapsed:.1f}s)")
 
 
-def run_pipeline(chip_part: str, skip_embed: bool = False) -> None:
-    db_path = locate(chip_part)
+def run_pipeline(skip_figures: bool = False, skip_embed: bool = False) -> None:
+    registry_path = Path("data/registry.json")
+    registry = json.loads(registry_path.read_text())
+    doc_info = registry[0]
+    pdf_path = Path(doc_info["path"])
+    doc_id = doc_info["doc_id"]
 
-    pages_jsonl = Path("data/parsed/pages_sm.jsonl")
-    tables_jsonl = Path("data/parsed/tables_sm.jsonl")
-    figures_jsonl = Path("data/parsed/figures_sm.jsonl")
-    chunks_jsonl = Path("data/parsed/chunks.jsonl")
-    chroma_dir = Path("data/store/chroma")
+    if not pdf_path.exists():
+        print(f"ERROR: PDF not found at {pdf_path}")
+        print(f"Place the UM PDF at {pdf_path} and re-run.")
+        sys.exit(1)
 
     pipeline_start = time.perf_counter()
 
-    t0 = _step("Step 1: Parsing prose + general tables from freeWord")
-    prose_count, table_count = parse_freewords(db_path, pages_jsonl, tables_jsonl)
-    _done(t0, f"{prose_count} prose rows, {table_count} general tables")
+    # Step 1: Parse text + TOC
+    t0 = _step("Step 1: Parsing text + TOC")
+    n = parse_text(pdf_path, Path("data/parsed/pages.jsonl"))
+    _done(t0, f"{n} text blocks")
 
-    t0 = _step("Step 2: Building figure discovery index")
-    figure_count = parse_figures(db_path, figures_jsonl)
-    _done(t0, f"{figure_count} figures")
+    # Step 2: Extract figures — must run before table detection so figure zones
+    # can be used to exclude false-positive tables inside figures.
+    if not skip_figures:
+        t0 = _step("Step 2: Extracting figures (no VLM — caption matching only)")
+        n = parse_figures(
+            pdf_path=pdf_path,
+            doc_id=doc_id,
+            pages_jsonl=Path("data/parsed/pages.jsonl"),
+            output_jsonl=Path("data/parsed/figures.jsonl"),
+            figures_dir=Path("data/figures"),
+        )
+        _done(t0, f"{n} figures")
+    else:
+        print("Step 2: SKIPPED (--skip-figures)")
+        fig_path = Path("data/parsed/figures.jsonl")
+        if not fig_path.exists():
+            fig_path.write_text("")
 
-    t0 = _step("Step 3: Building chunks")
-    counts = build_chunks(pages_jsonl, tables_jsonl, figures_jsonl, chip_part, chunks_jsonl)
+    # Step 3: Detect tables (uses figures.jsonl to skip figure-zone detections)
+    t0 = _step("Step 3: Detecting tables")
+    n = parse_tables(
+        pdf_path,
+        Path("data/parsed/tables.jsonl"),
+        pages_jsonl=Path("data/parsed/pages.jsonl"),
+        figures_jsonl=Path("data/parsed/figures.jsonl"),
+    )
+    _done(t0, f"{n} tables")
+
+    # Step 4: Build SQLite register database
+    t0 = _step("Step 4: Building SQLite register database")
+    n = build_register_db(
+        Path("data/parsed/tables.jsonl"),
+        Path("data/parsed/pages.jsonl"),
+        registry_path,
+        Path("data/store/registers.db"),
+    )
+    _done(t0, f"{n} registers")
+
+    # Step 5: Build chunks
+    t0 = _step("Step 5: Building chunks")
+    counts = build_chunks(
+        Path("data/parsed/pages.jsonl"),
+        Path("data/parsed/figures.jsonl"),
+        Path("data/parsed/tables.jsonl"),
+        Path("data/store/registers.db"),
+        registry_path,
+        Path("data/parsed/chunks.jsonl"),
+    )
     total = sum(counts.values())
     _done(t0, f"{total} chunks {counts}")
 
+    # Step 6: Embed + index into ChromaDB
     if not skip_embed:
-        t0 = _step("Step 4: Embedding + indexing into ChromaDB (local model, no API key)")
-        n = build_index(chunks_jsonl, chroma_dir)
+        t0 = _step("Step 6: Embedding + indexing into ChromaDB (local model, no API key)")
+        n = build_index(Path("data/parsed/chunks.jsonl"), Path("data/store/chroma"))
         _done(t0, f"{n} documents indexed")
     else:
-        print("Step 4: SKIPPED (--skip-embed)")
+        print("Step 6: SKIPPED (--skip-embed)")
 
     total_elapsed = time.perf_counter() - pipeline_start
     print("=" * 60)
@@ -75,7 +123,6 @@ def run_pipeline(chip_part: str, skip_embed: bool = False) -> None:
 
 
 if __name__ == "__main__":
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    chip_part = args[0] if args else "RA6M4"
+    skip_figures = "--skip-figures" in sys.argv
     skip_embed = "--skip-embed" in sys.argv
-    run_pipeline(chip_part, skip_embed=skip_embed)
+    run_pipeline(skip_figures=skip_figures, skip_embed=skip_embed)
