@@ -8,6 +8,12 @@ Reads:
 
 Writes:
   data/store/registers.db
+
+address/reset_value/access use a fallback chain: address-map/register-summary
+table (non-register tables in tables.jsonl with a register-name column, see
+_build_summary_table_index) -> prose scrape above the bit-field table. Chosen
+per-field, so a register can pick up address from a summary table and
+reset_value from prose in the same row.
 """
 
 import json
@@ -78,6 +84,63 @@ def _build_page_index(pages_jsonl: Path) -> dict[int, list[dict]]:
         for line in f:
             b = json.loads(line)
             index.setdefault(b["page"], []).append(b)
+    return index
+
+
+# Column-name aliases for address-map / register-summary tables (non-register
+# tables that list one row per register with address/reset/access columns).
+_SUMMARY_COLUMN_ALIASES = {
+    "address": ["address", "addr"],
+    "reset_value": ["initial value", "reset value", "reset"],
+    "access": ["r/w", "access"],
+}
+_SUMMARY_NAME_COLUMNS = ["symbol", "register name", "register"]
+
+
+def _find_column(row_lower: dict[str, str], aliases: list[str]) -> str:
+    for alias in aliases:
+        for col_lower, value in row_lower.items():
+            if alias in col_lower:
+                return value
+    return ""
+
+
+def _build_summary_table_index(tables_jsonl: Path) -> dict[str, dict]:
+    """Scan tables.jsonl for address-map/register-summary tables (is_register=False,
+    but with a register-name column and >=1 address/reset/access column) and build
+    register_name -> {"address", "reset_value", "access"} for fallback lookups.
+    """
+    index: dict[str, dict] = {}
+    with tables_jsonl.open(encoding="utf-8") as f:
+        for line in f:
+            table = json.loads(line)
+            if table.get("is_register"):
+                continue
+            header = table.get("header", [])
+            header_lower = [str(h).lower() for h in header]
+            has_name_col = any(
+                any(alias in h for alias in _SUMMARY_NAME_COLUMNS) for h in header_lower
+            )
+            has_data_col = any(
+                any(alias in h for h in header_lower)
+                for aliases in _SUMMARY_COLUMN_ALIASES.values()
+                for alias in aliases
+            )
+            if not has_name_col or not has_data_col:
+                continue
+
+            for row in table.get("rows", []):
+                row_lower = {str(k).lower(): str(v).strip() for k, v in row.items()}
+                reg_name = _find_column(row_lower, _SUMMARY_NAME_COLUMNS)
+                if not reg_name:
+                    continue
+                entry = index.setdefault(reg_name.upper(), {})
+                for field, aliases in _SUMMARY_COLUMN_ALIASES.items():
+                    if field in entry:
+                        continue
+                    value = _find_column(row_lower, aliases)
+                    if value:
+                        entry[field] = value
     return index
 
 
@@ -167,6 +230,7 @@ def build_register_db(
 
     db_path.parent.mkdir(parents=True, exist_ok=True)
     page_index = _build_page_index(pages_jsonl)
+    summary_index = _build_summary_table_index(tables_jsonl)
 
     con = sqlite3.connect(str(db_path))
     cur = con.cursor()
@@ -195,14 +259,24 @@ def build_register_db(
                 peripheral = peripheral or header_info["peripheral"]
                 section_path = section_path or header_info["section_path"] or ""
 
-            # Still extract address/reset from prose (not in tables.jsonl)
+            # Fallback chain: address-map/register-summary table → prose scrape.
             combined = " ".join(b["text"] for b in page_blocks)
-            addr_match = _RE_ADDRESS.search(combined)
-            address = addr_match.group(1).strip() if addr_match else ""
-            reset_match = _RE_RESET.search(combined)
-            reset_value = reset_match.group(1).strip() if reset_match else ""
-            access_match = _RE_ACCESS.search(combined)
-            access = access_match.group(1) if access_match else ""
+            summary = summary_index.get(reg_name.upper(), {})
+
+            address = summary.get("address", "")
+            if not address:
+                addr_match = _RE_ADDRESS.search(combined)
+                address = addr_match.group(1).strip() if addr_match else ""
+
+            reset_value = summary.get("reset_value", "")
+            if not reset_value:
+                reset_match = _RE_RESET.search(combined)
+                reset_value = reset_match.group(1).strip() if reset_match else ""
+
+            access = summary.get("access", "")
+            if not access:
+                access_match = _RE_ACCESS.search(combined)
+                access = access_match.group(1) if access_match else ""
 
             bit_fields = _parse_bit_field_rows(rows)
             full_json = json.dumps({
@@ -240,6 +314,18 @@ def build_register_db(
             count += 1
 
     con.commit()
+
+    missing_address = cur.execute("SELECT COUNT(*) FROM registers WHERE address = ''").fetchone()[0]
+    missing_reset = cur.execute("SELECT COUNT(*) FROM registers WHERE reset_value = ''").fetchone()[0]
+    missing_access = cur.execute("SELECT COUNT(*) FROM registers WHERE access = ''").fetchone()[0]
+    if missing_address or missing_reset or missing_access:
+        print(
+            f"  [register_schema] after fallback chain: "
+            f"{missing_address}/{count} missing address, "
+            f"{missing_reset}/{count} missing reset_value, "
+            f"{missing_access}/{count} missing access"
+        )
+
     con.close()
     return count
 
