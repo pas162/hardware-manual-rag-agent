@@ -205,9 +205,13 @@ Semantic search over all indexed content (prose, register rows, figures, tables)
   "figure_id": "",
   "image_path": "",
   "citation": "【R01UH0890EJ0160 Rev.1.60 | §8 > §8.2 | p.102】",
-  "score": 0.1823
+  "score": 0.1823,
+  "figure_refs": ["Figure 8.1"],
+  "table_refs": []
 }
 ```
+
+Prose hits carry `figure_refs`/`table_refs` — IDs of any `"Figure X.Y"` / `"Table X.Y"` mentioned in the chunk text, so the agent can call `get_figure`/`get_table` directly instead of a second `search_um` round-trip.
 
 ### `register_lookup(name, chip_part)`
 

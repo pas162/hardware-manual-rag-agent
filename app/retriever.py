@@ -76,6 +76,8 @@ def search(query: str, chip_part: str, top_k: int = _DEFAULT_K) -> list[dict] | 
     chunks = []
     for doc, _score in results_with_score:
         meta = doc.metadata
+        figure_refs = meta.get("figure_refs", "")
+        table_refs = meta.get("table_refs", "")
         chunks.append({
             "element_type": meta.get("element_type", ""),
             "section_path": meta.get("section_path", ""),
@@ -87,6 +89,8 @@ def search(query: str, chip_part: str, top_k: int = _DEFAULT_K) -> list[dict] | 
             "image_path": meta.get("image_path", ""),
             "citation": meta.get("citation", ""),
             "score": round(float(_score), 4),
+            "figure_refs": figure_refs.split(",") if figure_refs else [],
+            "table_refs": table_refs.split(",") if table_refs else [],
         })
 
     return chunks

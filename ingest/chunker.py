@@ -7,6 +7,9 @@ Produce five chunk types from parsed data:
   table_summary — one chunk per non-register table (discovery: "which table?")
   table_row     — one chunk per non-register table data row (precise fact lookup)
 
+prose chunks also carry figure_refs/table_refs — "Figure X.Y"/"Table X.Y" mentions
+extracted from the chunk text, letting an agent call get_figure/get_table directly.
+
 Output: data/parsed/chunks.jsonl  — full 10-field metadata envelope per chunk.
 """
 
@@ -25,6 +28,34 @@ CHUNK_OVERLAP = 80
 
 def _make_citation(doc_id: str, revision: str, section_path: str, page: int) -> str:
     return f"【{doc_id} Rev.{revision} | {section_path} | p.{page}】"
+
+
+# ── Cross-reference extraction ────────────────────────────────────────────────
+
+_RE_FIGURE_REF = re.compile(r"Fig(?:ure)?\.?\s+(\d+\.\d+(?:\.\d+)?)", re.IGNORECASE)
+_RE_TABLE_REF = re.compile(r"Table\s+(\d+\.\d+)", re.IGNORECASE)
+
+
+def _extract_refs(text: str) -> tuple[list[str], list[str]]:
+    """Pull "Figure X.Y" / "Table X.Y" mentions out of prose text.
+
+    figure_refs match figure_id's stored format exactly ("Figure X.Y"); table_refs
+    match make_table_id's numbered-table format ("table-X.Y"). Only the numbered
+    form is derivable from prose — slug/fallback table_ids are not linked here.
+    """
+    figure_refs: list[str] = []
+    for m in _RE_FIGURE_REF.finditer(text):
+        ref = f"Figure {m.group(1)}"
+        if ref not in figure_refs:
+            figure_refs.append(ref)
+
+    table_refs: list[str] = []
+    for m in _RE_TABLE_REF.finditer(text):
+        ref = f"table-{m.group(1)}"
+        if ref not in table_refs:
+            table_refs.append(ref)
+
+    return figure_refs, table_refs
 
 
 # ── Prose chunks ──────────────────────────────────────────────────────────────
@@ -62,6 +93,7 @@ def _prose_chunks(
 
         for split_text in splitter.split_text(full_text):
             render_text = f"[{section_path}] {split_text}"
+            figure_refs, table_refs = _extract_refs(split_text)
             chunks.append({
                 "doc_id": doc_id,
                 "revision": revision,
@@ -76,6 +108,8 @@ def _prose_chunks(
                 "image_path": "",
                 "render_text": render_text,
                 "citation": _make_citation(doc_id, revision, section_path, page_start),
+                "figure_refs": figure_refs,
+                "table_refs": table_refs,
             })
     return chunks
 
