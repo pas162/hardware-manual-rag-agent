@@ -25,6 +25,7 @@ def test_query_prefix_for_unmatched_model_is_empty():
 
 def test_get_embedder_bge_sets_prompt_and_normalizes(monkeypatch):
     monkeypatch.setattr(embedder_module, "HuggingFaceEmbeddings", _FakeHuggingFaceEmbeddings)
+    monkeypatch.setattr(embedder_module, "USE_OPENVINO", False)
 
     embeddings = get_embedder("BAAI/bge-large-en-v1.5")
 
@@ -37,9 +38,20 @@ def test_get_embedder_bge_sets_prompt_and_normalizes(monkeypatch):
 
 def test_get_embedder_minilm_normalizes_without_prompt(monkeypatch):
     monkeypatch.setattr(embedder_module, "HuggingFaceEmbeddings", _FakeHuggingFaceEmbeddings)
+    monkeypatch.setattr(embedder_module, "USE_OPENVINO", False)
 
     embeddings = get_embedder("sentence-transformers/all-MiniLM-L6-v2")
 
     assert embeddings.kwargs["encode_kwargs"] == {"normalize_embeddings": True}
     assert embeddings.kwargs["query_encode_kwargs"] == {"normalize_embeddings": True}
     assert "prompt" not in embeddings.kwargs["query_encode_kwargs"]
+
+
+def test_get_embedder_falls_back_to_pytorch_when_openvino_gpu_unavailable(monkeypatch):
+    monkeypatch.setattr(embedder_module, "HuggingFaceEmbeddings", _FakeHuggingFaceEmbeddings)
+    monkeypatch.setattr(embedder_module, "USE_OPENVINO", True)
+    monkeypatch.setattr(embedder_module, "_openvino_gpu_available", lambda: False)
+
+    embeddings = get_embedder("sentence-transformers/all-MiniLM-L6-v2")
+
+    assert isinstance(embeddings, _FakeHuggingFaceEmbeddings)

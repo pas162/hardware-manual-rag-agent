@@ -70,6 +70,7 @@ PDF ──▶ parse (text + tables + figures) ──▶ embed ──▶ ChromaDB
 
 - Python 3.11+
 - No GPU required — uses `BAAI/bge-large-en-v1.5` on CPU by default (configurable via `EMBED_MODEL` in `.env`; larger and slower than the previous MiniLM default, but higher retrieval quality)
+- Optional: set `USE_OPENVINO=1` in `.env` to embed via the OpenVINO GPU plugin (e.g. Intel integrated GPUs) instead of PyTorch CPU — falls back to PyTorch automatically if no OpenVINO-visible GPU is found. Roughly 2x faster for MiniLM-sized models on an Intel Iris Xe iGPU (see `scripts/bench_embed.py`)
 - No OpenAI API key required for ingestion or retrieval
 
 ---

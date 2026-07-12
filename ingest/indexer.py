@@ -114,7 +114,7 @@ if __name__ == "__main__":
         persist_directory=str(chroma_dir),
     )
     results = vectorstore.similarity_search("clock generation circuit", k=3)
-    print(f"\nCheckpoint: similarity_search('clock generation circuit', k=3) → {len(results)} results")
+    print(f"\nCheckpoint: similarity_search('clock generation circuit', k=3) -> {len(results)} results")
     for r in results:
         print(f"  [{r.metadata.get('element_type')}] {r.metadata.get('section_path')} p{r.metadata.get('page_start')}")
         print(f"    {r.page_content[:100]}")

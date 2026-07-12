@@ -14,3 +14,5 @@ mcp
 fastmcp
 pydantic
 python-dotenv
+openvino
+optimum-intel[openvino]
