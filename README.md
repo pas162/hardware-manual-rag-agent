@@ -27,7 +27,7 @@ PDF ──▶ parse (text + tables + figures) ──▶ embed ──▶ ChromaDB
                      │
                      └──▶ SQLite (registers + bit fields)
                                     │
-                          MCP Server (local stdio process)
+                          MCP Server (SSE — http://localhost:8765/sse)
                           ┌─────────────────────────────┐
                           │  tool: search_um             │
                           │  tool: register_lookup       │
@@ -55,7 +55,7 @@ PDF ──▶ parse (text + tables + figures) ──▶ embed ──▶ ChromaDB
 
 | Module | Role |
 |---|---|
-| `app/mcp_server.py` | FastMCP server — exposes the three tools via stdio |
+| `app/mcp_server.py` | FastMCP server (SSE transport) — exposes the three tools |
 | `app/retriever.py` | ChromaDB semantic search with similarity threshold guard |
 | `app/register_tool.py` | SQLite register lookup (exact + prefix match) |
 | `app/figure_tool.py` | Figure retrieval from ChromaDB by figure ID |
@@ -130,20 +130,15 @@ Copy `.mcp.json.example` to `.mcp.json` and update the paths:
 {
   "mcpServers": {
     "hardware-um": {
-      "command": "/path/to/.venv/bin/python",
-      "args": ["-m", "app.mcp_server"],
-      "cwd": "/path/to/hardware-manual-rag-agent",
-      "env": {
-        "PYTHONPATH": "/path/to/hardware-manual-rag-agent",
-        "HF_HUB_OFFLINE": "1",
-        "TRANSFORMERS_OFFLINE": "1"
-      }
+      "url": "http://localhost:8765/sse"
     }
   }
 }
 ```
 
-On Windows, `command` is `.venv\Scripts\python.exe`.
+The server must be running before your agent connects (see step 3).
+For stdio-only clients (RICA, older Copilot), use the Node stdio-to-SSE bridge
+described in `.mcp.json.example`.
 
 ### 5. Connect your agent
 
@@ -163,7 +158,7 @@ On Windows, `command` is `.venv\Scripts\python.exe`.
 ### 6. Verify the server
 
 ```bash
-npx @modelcontextprotocol/inspector python -m app.mcp_server
+npx @modelcontextprotocol/inspector --url http://localhost:8765/sse
 ```
 
 ---
@@ -183,7 +178,7 @@ Once connected, ask your agent naturally:
 
 "Show me the clock generation block diagram."
 → agent calls get_figure("Figure 8.1", "YOUR_CHIP")
-→ returns caption, VLM summary, image path
+→ returns caption, image path, section and page citation
 ```
 
 ---
@@ -242,7 +237,7 @@ Retrieves a figure by its label (e.g. `"Figure 13.2"`).
 {
   "figure_id": "Figure 13.2",
   "caption": "ICU Block Diagram",
-  "vlm_summary": "",
+  "vlm_summary": "",          // reserved — no VLM used
   "image_path": "data/figures/R01UH0890EJ0160/p281_fig_13_2.png",
   "section_path": "§13 > §13.1",
   "page": 281,
@@ -273,13 +268,15 @@ Outputs a pass/fail table to `eval/results.md`. Target: ≥ 80% pass rate.
 | Single Chroma collection | One retrieval hop; filter by `chip_part` for multi-doc support |
 | Figure zones in table parser | Prevents pdfplumber from detecting drawing lines inside figures as tables |
 | Local embedding model (MiniLM) | No API key, no cost, runs on CPU |
-| stdio MCP transport | Works with every MCP client without network config |
+| SSE MCP transport   | Single long-running server; stdio clients use a thin bridge |
 
 ---
 
 ## Stack
 
 Python 3.11 · FastMCP · LangChain · ChromaDB · PyMuPDF · pdfplumber · SQLite · `sentence-transformers/all-MiniLM-L6-v2`
+
+For the full architecture and roadmap see [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md).
 
 ---
 
