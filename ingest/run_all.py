@@ -11,8 +11,9 @@ Steps:
   2. parser_figures -> data/parsed/figures.jsonl  (must run before tables)
   3. parser_tables  -> data/parsed/tables.jsonl   (uses figures to exclude figure zones)
   4. register_schema -> data/store/registers.db
-  5. chunker        -> data/parsed/chunks.jsonl
-  6. indexer        -> data/store/chroma/
+  5. table_schema    -> data/store/registers.db (general_tables table)
+  6. chunker        -> data/parsed/chunks.jsonl
+  7. indexer        -> data/store/chroma/
 """
 
 import json
@@ -24,6 +25,7 @@ from ingest.parser_text import parse_text
 from ingest.parser_figures import parse_figures
 from ingest.parser_tables import parse_tables
 from ingest.register_schema import build_register_db
+from ingest.table_schema import build_general_tables_db
 from ingest.chunker import build_chunks
 from ingest.indexer import build_index
 
@@ -96,8 +98,17 @@ def run_pipeline(skip_figures: bool = False, skip_embed: bool = False) -> None:
     )
     _done(t0, f"{n} registers")
 
-    # Step 5: Build chunks
-    t0 = _step("Step 5: Building chunks")
+    # Step 5: Build SQLite general_tables database (non-register tables)
+    t0 = _step("Step 5: Building SQLite general_tables database")
+    n = build_general_tables_db(
+        Path("data/parsed/tables.jsonl"),
+        registry_path,
+        Path("data/store/registers.db"),
+    )
+    _done(t0, f"{n} general tables")
+
+    # Step 6: Build chunks
+    t0 = _step("Step 6: Building chunks")
     counts = build_chunks(
         Path("data/parsed/pages.jsonl"),
         Path("data/parsed/figures.jsonl"),
@@ -109,13 +120,13 @@ def run_pipeline(skip_figures: bool = False, skip_embed: bool = False) -> None:
     total = sum(counts.values())
     _done(t0, f"{total} chunks {counts}")
 
-    # Step 6: Embed + index into ChromaDB
+    # Step 7: Embed + index into ChromaDB
     if not skip_embed:
-        t0 = _step("Step 6: Embedding + indexing into ChromaDB (local model, no API key)")
+        t0 = _step("Step 7: Embedding + indexing into ChromaDB (local model, no API key)")
         n = build_index(Path("data/parsed/chunks.jsonl"), Path("data/store/chroma"))
         _done(t0, f"{n} documents indexed")
     else:
-        print("Step 6: SKIPPED (--skip-embed)")
+        print("Step 7: SKIPPED (--skip-embed)")
 
     total_elapsed = time.perf_counter() - pipeline_start
     print("=" * 60)

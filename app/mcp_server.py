@@ -1,10 +1,11 @@
 """
 MCP server for Hardware User Manual RAG.
 
-Exposes three tools:
-  search_um(query, chip_part, top_k=6)   — semantic search (prose + registers + figures)
+Exposes four tools:
+  search_um(query, chip_part, top_k=6)   — semantic search (prose + registers + figures + tables)
   register_lookup(name, chip_part)        — deterministic SQLite register lookup
   get_figure(figure_id, chip_part)        — retrieve a figure by ID
+  get_table(table_id, chip_part)          — deterministic SQLite general-table lookup
 
 Run (SSE transport, keep running in the background):
   python -m app.mcp_server
@@ -26,6 +27,7 @@ from fastmcp import FastMCP
 from app.retriever import search as _search, _get_vectorstore as _warmup_retriever
 from app.register_tool import register_lookup as _register_lookup
 from app.figure_tool import get_figure as _get_figure
+from app.table_tool import get_table as _get_table
 
 mcp = FastMCP("hardware-um")
 
@@ -83,6 +85,20 @@ def get_figure(figure_id: str, chip_part: str) -> dict | None:
         chip_part: Chip identifier, e.g. "RA6M4"
     """
     return _get_figure(figure_id, chip_part)
+
+
+@mcp.tool()
+def get_table(table_id: str, chip_part: str) -> dict | None:
+    """Retrieve a general (non-register) table by its ID (e.g. 'table-4.1').
+
+    Returns the full, faithful markdown table, section_path, page, and citation.
+    Returns null for unknown table IDs.
+
+    Args:
+        table_id:  Table identifier, e.g. "table-4.1" (from a search_um hit's table_id field)
+        chip_part: Chip identifier, e.g. "RA6M4"
+    """
+    return _get_table(table_id, chip_part)
 
 
 if __name__ == "__main__":

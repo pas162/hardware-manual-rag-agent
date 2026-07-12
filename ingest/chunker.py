@@ -1,10 +1,11 @@
 """
-Produce four chunk types from parsed data:
+Produce five chunk types from parsed data:
 
-  prose        — RecursiveCharacterTextSplitter over section bodies
-  register_row — one chunk per bit-field row from SQLite
-  figure       — one chunk per extracted figure
-  table        — one chunk per non-register table (lookup/truth/timing tables)
+  prose         — RecursiveCharacterTextSplitter over section bodies
+  register_row  — one chunk per bit-field row from SQLite
+  figure        — one chunk per extracted figure
+  table_summary — one chunk per non-register table (discovery: "which table?")
+  table_row     — one chunk per non-register table data row (precise fact lookup)
 
 Output: data/parsed/chunks.jsonl  — full 10-field metadata envelope per chunk.
 """
@@ -15,6 +16,8 @@ import sqlite3
 from pathlib import Path
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from ingest.table_schema import make_table_id
 
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 80
@@ -164,20 +167,33 @@ def _figure_chunks(
     return chunks
 
 
-# ── General table chunks ──────────────────────────────────────────────────────
+# ── General table chunks (table_summary + table_row) ──────────────────────────
 
 _RE_BIT_HEADER = re.compile(r"^bit\b", re.IGNORECASE)
-_ROWS_PER_CHUNK = 40
 
 
-def _serialize_table(header: list[str], rows: list[dict]) -> str:
-    """Serialize table rows to pipe-delimited text."""
-    lines = [" | ".join(h for h in header if h)]
-    for row in rows:
-        cells = [str(row.get(h, "") or "").strip() for h in header if h]
-        if any(cells):
-            lines.append(" | ".join(cells))
-    return "\n".join(lines)
+def _table_summary_text(header: list[str], rows: list[dict], table_title: str, section_path: str) -> str:
+    """1 summary sentence per table — the discovery layer ('which table?')."""
+    col_list = ", ".join(header)
+    title = table_title or "Untitled table"
+    return f"{title} (in {section_path}) — a table with {len(rows)} row(s). Columns: {col_list}."
+
+
+def _row_to_sentence(header: list[str], row: dict, table_title: str) -> str:
+    """1 natural-language sentence per data row — the precise-fact layer.
+
+    Prose form embeds better than pipe-delimited cells (see PROJECT_PLAN.md §4.4:
+    0.678 vs 0.553 cosine similarity, measured on the real dataset).
+    """
+    parts = []
+    for col in header:
+        val = str(row.get(col, "") or "").replace("\n", " ").strip()
+        if val:
+            parts.append(f"{col} is {val}")
+    if not parts:
+        return ""
+    title = table_title or "this table"
+    return f"In {title}, " + ", ".join(parts) + "."
 
 
 def _general_table_chunks(
@@ -186,8 +202,9 @@ def _general_table_chunks(
     revision: str,
     chip_part: str,
 ) -> list[dict]:
-    """One chunk per non-register table (lookup, truth, timing tables)."""
+    """table_summary (1/table) + table_row (1/data row) chunks for non-register tables."""
     chunks = []
+    seen_ids: set[str] = set()
     with tables_jsonl.open(encoding="utf-8") as f:
         for line in f:
             table = json.loads(line)
@@ -195,7 +212,7 @@ def _general_table_chunks(
             rows = table.get("rows", [])
 
             # Skip register tables — already captured in register_row chunks
-            if any(_RE_BIT_HEADER.match(h) for h in header):
+            if table.get("is_register") or any(_RE_BIT_HEADER.match(h) for h in header):
                 continue
 
             if not header or not rows:
@@ -205,16 +222,37 @@ def _general_table_chunks(
             table_title = table.get("table_title", "")
             page = table["page"]
 
-            # Split large tables into sub-chunks so each fits embedding context
-            for i in range(0, len(rows), _ROWS_PER_CHUNK):
-                batch = rows[i:i + _ROWS_PER_CHUNK]
-                body = _serialize_table(header, batch)
-                if not body.strip():
+            table_id = make_table_id(table_title, page, table.get("table_idx", 0))
+            base_id, suffix = table_id, 1
+            while table_id in seen_ids:
+                table_id = f"{base_id}-{suffix}"
+                suffix += 1
+            seen_ids.add(table_id)
+
+            citation = _make_citation(doc_id, revision, section_path, page)
+
+            summary_text = _table_summary_text(header, rows, table_title, section_path)
+            chunks.append({
+                "doc_id": doc_id,
+                "revision": revision,
+                "chip_part": chip_part,
+                "section_path": section_path,
+                "page_start": page,
+                "page_end": page,
+                "element_type": "table_summary",
+                "peripheral": "",
+                "register_name": "",
+                "figure_id": "",
+                "image_path": "",
+                "table_id": table_id,
+                "render_text": summary_text,
+                "citation": citation,
+            })
+
+            for row in rows:
+                row_text = _row_to_sentence(header, row, table_title)
+                if not row_text:
                     continue
-                prefix = f"[{section_path}]"
-                if table_title:
-                    prefix += f"\n{table_title}"
-                render_text = f"{prefix}\n{body}"
                 chunks.append({
                     "doc_id": doc_id,
                     "revision": revision,
@@ -222,13 +260,14 @@ def _general_table_chunks(
                     "section_path": section_path,
                     "page_start": page,
                     "page_end": page,
-                    "element_type": "table",
+                    "element_type": "table_row",
                     "peripheral": "",
                     "register_name": "",
                     "figure_id": "",
                     "image_path": "",
-                    "render_text": render_text,
-                    "citation": _make_citation(doc_id, revision, section_path, page),
+                    "table_id": table_id,
+                    "render_text": row_text,
+                    "citation": citation,
                 })
     return chunks
 
@@ -284,8 +323,8 @@ if __name__ == "__main__":
         print(f"  {etype}: {n}")
 
     # Verify all three types present
-    missing = [t for t in ("prose", "register_row", "figure", "table") if t not in counts]
+    missing = [t for t in ("prose", "register_row", "figure", "table_summary", "table_row") if t not in counts]
     if missing:
         print(f"\nWARNING: missing element types: {missing}")
     else:
-        print("\nCheckpoint: all three element types present ✓")
+        print("\nCheckpoint: all five element types present ✓")

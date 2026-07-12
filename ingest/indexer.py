@@ -37,6 +37,7 @@ def chunk_to_document(chunk: dict) -> Document:
         "register_name": chunk.get("register_name", ""),
         "figure_id": chunk.get("figure_id", ""),
         "image_path": chunk.get("image_path", ""),
+        "table_id": chunk.get("table_id", ""),
         "citation": chunk.get("citation", ""),
     }
     return Document(page_content=chunk["render_text"], metadata=metadata)

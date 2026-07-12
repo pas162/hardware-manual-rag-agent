@@ -38,6 +38,93 @@ def _is_register_table(rows: list[list]) -> bool:
     return False
 
 
+# A cell "looks like data" when it contains a hex/address pattern or a
+# number followed by a unit — patterns that never appear in header labels.
+_RE_DATA_LIKE = re.compile(r"0x[0-9A-Fa-f_]+|\b\d+\s*(KB|MB|GB|bit|Hz|MHz)\b", re.IGNORECASE)
+
+
+def _first_data_row_idx(rows: list[list], start: int, search_limit: int) -> int:
+    """Return the index of the first row that looks like real data.
+
+    A data row has at least one data-shaped cell (hex address, sized unit) and
+    is not mostly empty. Rows before it (from *start*) are header levels —
+    covers both single-row headers and multi-level headers with parent/child
+    label rows, since header cells never match the data-shaped pattern.
+    """
+    for i in range(start, min(search_limit, len(rows))):
+        row = rows[i]
+        if row is None:
+            continue
+        if any(c and _RE_DATA_LIKE.search(str(c)) for c in row):
+            return i
+    # No data-shaped cell found in range — assume exactly one header row.
+    return start + 1
+
+
+def _forward_fill_row(prev: list, row: list) -> list:
+    """Fill None cells in *row* from the same column in *prev* (merged-cell continuation)."""
+    filled = list(row)
+    for i in range(len(filled)):
+        if filled[i] is None and i < len(prev):
+            filled[i] = prev[i]
+    return filled
+
+
+_RE_BULLET_LINE = re.compile(r"^\s*(?:[•·-]|\d+\s*[.):]|\d[\s\d]*:)\s*")
+
+
+def _clean_cell_text(text: str) -> str:
+    """Join multi-line bullet-style cell content into a single '; '-separated string.
+
+    pdfplumber preserves each visual line inside a cell as '\\n' — option lists
+    like "0 0 0:\\nSunday\\n0 0 1: Monday" read poorly as embedded prose. Blank
+    lines and pure continuation wraps (no bullet marker) are joined without a
+    new separator so wrapped sentences stay intact.
+    """
+    lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
+    if len(lines) <= 1:
+        return text.replace("\n", " ").strip()
+    parts: list[str] = []
+    for ln in lines:
+        if _RE_BULLET_LINE.match(ln) or not parts:
+            parts.append(ln)
+        else:
+            parts[-1] = f"{parts[-1]} {ln}"
+    return "; ".join(parts)
+
+
+def _flatten_header_levels(header_rows: list[list]) -> list[str]:
+    """Combine 1+ header rows into flat 'Parent - Child' column names.
+
+    Each header row is forward-filled left-to-right first (merged parent cells
+    span multiple child columns), then levels are joined per-column with ' - ',
+    skipping empty/duplicate levels.
+    """
+    n_cols = max(len(r) for r in header_rows)
+    filled_levels = []
+    for row in header_rows:
+        padded = list(row) + [None] * (n_cols - len(row))
+        # Forward-fill within the row (merged header cell spans multiple columns)
+        filled = []
+        last = ""
+        for c in padded:
+            text = str(c).strip() if c else ""
+            if text:
+                last = text
+            filled.append(last)
+        filled_levels.append(filled)
+
+    header = []
+    for col in range(n_cols):
+        levels = []
+        for level in filled_levels:
+            text = level[col]
+            if text and (not levels or levels[-1] != text):
+                levels.append(text)
+        header.append(" - ".join(levels))
+    return header
+
+
 def _rows_to_dicts(rows: list[list]) -> tuple[list[str], list[dict]]:
     """Return (header, data_rows). Skips title rows like 'Table X.Y ...'."""
     if len(rows) < 1:
@@ -58,29 +145,43 @@ def _rows_to_dicts(rows: list[list]) -> tuple[list[str], list[dict]]:
             register_found = True
             break
 
-    if not register_found:
-        # For general tables: pick the row with the most non-empty cells among
-        # the first 5 rows, skipping any row whose first cell is a table title.
-        best_idx = 0
-        best_count = -1
-        for i, row in enumerate(rows[:5]):
+    if register_found:
+        header = [str(c).strip() if c else "" for c in rows[header_idx]]
+        data_start = header_idx + 1
+    else:
+        # For general tables: skip the title row, then find where the header
+        # row(s) end and real data starts, using content shape rather than
+        # cell-count (handles both single-row and multi-level headers).
+        start = 0
+        for i, row in enumerate(rows[:3]):
             if row is None:
                 continue
             cells = [str(c).strip() for c in row if c]
             if cells and _RE_TABLE_TITLE.match(cells[0]):
-                continue
-            nonempty = sum(1 for c in row if c and str(c).strip())
-            if nonempty > best_count:
-                best_count = nonempty
-                best_idx = i
-        header_idx = best_idx
+                start = i + 1
+                break
 
-    header = [str(c).strip() if c else "" for c in rows[header_idx]]
+        header_end = _first_data_row_idx(rows, start, search_limit=start + 4)
+
+        header_rows = [r for r in rows[start:header_end] if r is not None]
+        if not header_rows:
+            header_rows = [rows[start]] if start < len(rows) else [[]]
+
+        header = _flatten_header_levels(header_rows) if len(header_rows) > 1 else \
+            [str(c).strip() if c else "" for c in header_rows[0]]
+        data_start = header_end
+
     result = []
-    for row in rows[header_idx + 1:]:
+    prev_row: list | None = None
+    for row in rows[data_start:]:
         if row is None:
             continue
-        cells = [str(c).strip() if c else "" for c in row]
+        filled = _forward_fill_row(prev_row, row) if prev_row is not None else list(row)
+        prev_row = filled
+        if register_found:
+            cells = [str(c).strip() if c else "" for c in filled]
+        else:
+            cells = [_clean_cell_text(str(c)) if c else "" for c in filled]
         d = dict(zip(header, cells))
         # Normalise "Function" column → also store as "description"
         if "Function" in d and "Description" not in d:
