@@ -8,13 +8,15 @@ No cloud hosting. No separate UI. Drop in a PDF, run ingestion once, and your ag
 
 ## What It Does
 
-Embedded developers spend significant time hunting through 1000+ page hardware UMs for register addresses, bit-field meanings, and peripheral diagrams. This project turns any UM PDF into three callable MCP tools:
+Embedded developers spend significant time hunting through 1000+ page hardware UMs for register addresses, bit-field meanings, and peripheral diagrams. This project turns any UM PDF into callable MCP tools:
 
 | Tool | What it does |
 |---|---|
 | `search_um` | Semantic search over prose, tables, and figures — returns cited chunks |
 | `register_lookup` | Deterministic SQLite lookup by register name — returns address, reset value, all bit fields |
+| `query_register_field` | Deterministic SQLite lookup of a single bit field by symbol or bit index — no full register payload |
 | `get_figure` | Retrieve a figure by ID — returns caption, VLM summary, and image path |
+| `get_table` | Deterministic SQLite lookup of a general (non-register) table by ID — returns the full markdown |
 
 Every response carries a `【DOC | § | p.N】` citation. The retriever refuses (returns a refusal string) rather than returning low-confidence chunks.
 
@@ -31,7 +33,9 @@ PDF ──▶ parse (text + tables + figures) ──▶ embed ──▶ ChromaDB
                           ┌─────────────────────────────┐
                           │  tool: search_um             │
                           │  tool: register_lookup       │
+                          │  tool: query_register_field  │
                           │  tool: get_figure            │
+                          │  tool: get_table             │
                           └─────────────────────────────┘
                                     │
                     ┌───────────────┼───────────────┐
@@ -224,6 +228,27 @@ Exact + prefix match lookup. Handles indexed register names (e.g. `IELSRn` match
     {"bits": "31", "symbol": "IR", "access": "R/W", "reset": "0", "description": "..."},
     ...
   ],
+  "citation": "【R01UH0890EJ0160 Rev.1.60 | §13 > §13.3.2 | p.284】"
+}
+```
+
+### `query_register_field(register_name, bit_or_symbol, chip_part)`
+
+Precise single-field lookup — no full register payload. Matches by symbol name (e.g. `"IR"`) or bit index (e.g. `"16"`).
+
+```python
+# Returns dict or null
+{
+  "peripheral": "ICU",
+  "register_name": "IELSRn",
+  "address": "0x40006300 + 4*n",
+  "bits": "16",
+  "symbol": "IR",
+  "access": "R/W",
+  "reset": "0",
+  "description": "...",
+  "section_path": "§13 > §13.3.2",
+  "page": 284,
   "citation": "【R01UH0890EJ0160 Rev.1.60 | §13 > §13.3.2 | p.284】"
 }
 ```

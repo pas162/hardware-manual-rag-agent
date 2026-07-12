@@ -1,11 +1,12 @@
 """
 MCP server for Hardware User Manual RAG.
 
-Exposes four tools:
-  search_um(query, chip_part, top_k=6)   — semantic search (prose + registers + figures + tables)
-  register_lookup(name, chip_part)        — deterministic SQLite register lookup
-  get_figure(figure_id, chip_part)        — retrieve a figure by ID
-  get_table(table_id, chip_part)          — deterministic SQLite general-table lookup
+Exposes five tools:
+  search_um(query, chip_part, top_k=6)               — semantic search (prose + registers + figures + tables)
+  register_lookup(name, chip_part)                    — deterministic SQLite register lookup
+  query_register_field(register_name, bit_or_symbol, chip_part) — single bit-field lookup
+  get_figure(figure_id, chip_part)                    — retrieve a figure by ID
+  get_table(table_id, chip_part)                       — deterministic SQLite general-table lookup
 
 Run (SSE transport, keep running in the background):
   python -m app.mcp_server
@@ -26,6 +27,7 @@ from fastmcp import FastMCP
 
 from app.retriever import search as _search, _get_vectorstore as _warmup_retriever
 from app.register_tool import register_lookup as _register_lookup
+from app.register_tool import query_register_field as _query_register_field
 from app.figure_tool import get_figure as _get_figure
 from app.table_tool import get_table as _get_table
 
@@ -71,6 +73,22 @@ def register_lookup(name: str, chip_part: str) -> list[dict]:
         chip_part: Chip identifier, e.g. "RA6M4"
     """
     return _register_lookup(name, chip_part)
+
+
+@mcp.tool()
+def query_register_field(register_name: str, bit_or_symbol: str, chip_part: str) -> dict | None:
+    """Look up a single bit field within one register, without returning the whole register.
+
+    Matches bit_or_symbol against the field's symbol name (e.g. "IR") first, then
+    against its bit index or range (e.g. "5"). Returns null when the register,
+    chip_part, or field is unknown.
+
+    Args:
+        register_name: Register name, e.g. "IELSRn"
+        bit_or_symbol: Bit index (e.g. "5") or symbol name (e.g. "IR")
+        chip_part:     Chip identifier, e.g. "RA6M4"
+    """
+    return _query_register_field(register_name, bit_or_symbol, chip_part)
 
 
 @mcp.tool()

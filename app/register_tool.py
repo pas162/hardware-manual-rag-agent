@@ -102,6 +102,110 @@ def register_lookup(name: str, chip_part: str, db_path: Path = _DB_PATH) -> list
     return results
 
 
+def _bit_matches(bits: str, bit_or_symbol: str) -> bool:
+    """True if bit_or_symbol names a single bit or falls within a bit range.
+
+    `bits` is stored as either a single index ("16") or a range ("8:0", high:low).
+    Matching is by exact single-bit index only (e.g. "5" matches bits="5" or
+    bits="8:0" when 5 falls in [0,8]); non-numeric input never matches.
+    """
+    if not bit_or_symbol.isdigit():
+        return False
+    target = int(bit_or_symbol)
+
+    if ":" in bits:
+        try:
+            hi, lo = (int(x) for x in bits.split(":", 1))
+        except ValueError:
+            return False
+        return lo <= target <= hi
+
+    try:
+        return int(bits) == target
+    except ValueError:
+        return False
+
+
+def query_register_field(
+    register_name: str, bit_or_symbol: str, chip_part: str, db_path: Path = _DB_PATH
+) -> dict | None:
+    """Look up a single bit field within one register, by bit index/range or symbol name.
+
+    Matches bit_or_symbol against bit_fields.symbol (case-insensitive exact match)
+    first, then against bit_fields.bits (exact index or within a "hi-lo" range).
+    Returns None when the register, chip_part, or field is unknown.
+    """
+    registry = _load_registry()
+    doc_info = registry.get(chip_part)
+    if doc_info is None:
+        return None
+
+    doc_id = doc_info["doc_id"]
+    revision = doc_info["revision"]
+
+    if not db_path.exists():
+        return None
+
+    con = sqlite3.connect(str(db_path))
+    con.row_factory = sqlite3.Row
+    cur = con.cursor()
+
+    cur.execute(
+        """
+        SELECT peripheral, register_name, address, section_path, page_start
+        FROM registers
+        WHERE doc_id = ? AND register_name = ?
+        """,
+        (doc_id, register_name),
+    )
+    reg_row = cur.fetchone()
+    if reg_row is None:
+        con.close()
+        return None
+
+    cur.execute(
+        """
+        SELECT bits, symbol, access, reset, description
+        FROM bit_fields
+        WHERE peripheral = ? AND register_name = ?
+        ORDER BY rowid
+        """,
+        (reg_row["peripheral"], reg_row["register_name"]),
+    )
+    field_rows = cur.fetchall()
+    con.close()
+
+    match = None
+    for row in field_rows:
+        if row["symbol"] and row["symbol"].lower() == bit_or_symbol.lower():
+            match = row
+            break
+    if match is None:
+        for row in field_rows:
+            if _bit_matches(row["bits"], bit_or_symbol):
+                match = row
+                break
+    if match is None:
+        return None
+
+    section_path = reg_row["section_path"] or "§UNKNOWN"
+    page = reg_row["page_start"] or 0
+
+    return {
+        "peripheral": reg_row["peripheral"],
+        "register_name": reg_row["register_name"],
+        "address": reg_row["address"],
+        "bits": match["bits"],
+        "symbol": match["symbol"],
+        "access": match["access"],
+        "reset": match["reset"],
+        "description": match["description"],
+        "section_path": section_path,
+        "page": page,
+        "citation": _make_citation(doc_id, revision, section_path, page),
+    }
+
+
 if __name__ == "__main__":
     # Quick smoke test
     import sys
