@@ -65,7 +65,7 @@ PDF ──▶ parse (text + tables + figures) ──▶ embed ──▶ ChromaDB
 ## Requirements
 
 - Python 3.11+
-- No GPU required — uses `sentence-transformers/all-MiniLM-L6-v2` (CPU)
+- No GPU required — uses `BAAI/bge-large-en-v1.5` on CPU by default (configurable via `EMBED_MODEL` in `.env`; larger and slower than the previous MiniLM default, but higher retrieval quality)
 - No OpenAI API key required for ingestion or retrieval
 
 ---
@@ -267,14 +267,14 @@ Outputs a pass/fail table to `eval/results.md`. Target: ≥ 80% pass rate.
 | Similarity threshold guard | Returns a refusal string rather than low-confidence chunks |
 | Single Chroma collection | One retrieval hop; filter by `chip_part` for multi-doc support |
 | Figure zones in table parser | Prevents pdfplumber from detecting drawing lines inside figures as tables |
-| Local embedding model (MiniLM) | No API key, no cost, runs on CPU |
+| Local embedding model (bge-large, configurable) | No API key, no cost, runs on CPU |
 | SSE MCP transport   | Single long-running server; stdio clients use a thin bridge |
 
 ---
 
 ## Stack
 
-Python 3.11 · FastMCP · LangChain · ChromaDB · PyMuPDF · pdfplumber · SQLite · `sentence-transformers/all-MiniLM-L6-v2`
+Python 3.11 · FastMCP · LangChain · ChromaDB · PyMuPDF · pdfplumber · SQLite · `BAAI/bge-large-en-v1.5`
 
 For the full architecture and roadmap see [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md).
 

@@ -5,14 +5,15 @@ get_figure(figure_id, chip_part) — retrieve a figure record from ChromaDB.
 import json
 from pathlib import Path
 
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
+
+from ingest.embedder import get_embedder
+from settings import EMBED_MODEL
 
 _ROOT = Path(__file__).resolve().parent.parent
 _COLLECTION_NAME = "hardware_um"
 _CHROMA_DIR = _ROOT / "data/store/chroma"
 _REGISTRY_PATH = _ROOT / "data/registry.json"
-_EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 _vectorstore: Chroma | None = None
 
@@ -20,7 +21,7 @@ _vectorstore: Chroma | None = None
 def _get_vectorstore() -> Chroma:
     global _vectorstore
     if _vectorstore is None:
-        embeddings = HuggingFaceEmbeddings(model_name=_EMBED_MODEL)
+        embeddings = get_embedder(EMBED_MODEL)
         _vectorstore = Chroma(
             collection_name=_COLLECTION_NAME,
             embedding_function=embeddings,

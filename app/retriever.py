@@ -5,8 +5,10 @@ Chroma-backed semantic retriever with similarity threshold guard and citation at
 import json
 from pathlib import Path
 
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
+
+from ingest.embedder import get_embedder
+from settings import EMBED_MODEL
 
 _ROOT = Path(__file__).resolve().parent.parent
 _COLLECTION_NAME = "hardware_um"
@@ -16,15 +18,13 @@ _SIMILARITY_THRESHOLD = 0.30
 _DEFAULT_K = 6
 _MAX_K = 10
 
-_EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-
 _vectorstore: Chroma | None = None
 
 
 def _get_vectorstore() -> Chroma:
     global _vectorstore
     if _vectorstore is None:
-        embeddings = HuggingFaceEmbeddings(model_name=_EMBED_MODEL)
+        embeddings = get_embedder(EMBED_MODEL)
         _vectorstore = Chroma(
             collection_name=_COLLECTION_NAME,
             embedding_function=embeddings,
@@ -65,7 +65,8 @@ def search(query: str, chip_part: str, top_k: int = _DEFAULT_K) -> list[dict] | 
     if not results_with_score:
         return f"No relevant content found in {chip_part} UM Rev.{revision}."
 
-    # Chroma returns L2 distance by default; for cosine embeddings this is ~2*(1-cos_sim)
+    # Chroma returns L2 distance by default; for unit-normalized embeddings this
+    # is exactly 2*(1-cos_sim) — holds because get_embedder() sets normalize_embeddings=True.
     # Lower score = more similar. Threshold applied as: if min_score > threshold → refusal.
     # We treat "score" here as distance; the guard fires when the BEST result is too far.
     best_score = results_with_score[0][1]

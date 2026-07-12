@@ -8,9 +8,11 @@ Writes: data/store/chroma/  (persistent Chroma collection)
 import json
 from pathlib import Path
 
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
+
+from ingest.embedder import get_embedder
+from settings import EMBED_MODEL
 
 COLLECTION_NAME = "hardware_um"
 BATCH_SIZE = 100
@@ -43,9 +45,6 @@ def chunk_to_document(chunk: dict) -> Document:
     return Document(page_content=chunk["render_text"], metadata=metadata)
 
 
-_EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-
-
 def build_index(
     chunks_jsonl: Path,
     chroma_dir: Path,
@@ -57,7 +56,7 @@ def build_index(
     chunks = load_chunks(chunks_jsonl)
     print(f"Loaded {len(chunks)} chunks")
 
-    embeddings = HuggingFaceEmbeddings(model_name=_EMBED_MODEL)
+    embeddings = get_embedder(EMBED_MODEL)
 
     # Build in batches
     total = 0
@@ -97,7 +96,7 @@ if __name__ == "__main__":
     print(f"\nIndexed {n} chunks into ChromaDB at {chroma_dir}")
 
     # Checkpoint
-    embeddings = HuggingFaceEmbeddings(model_name=_EMBED_MODEL)
+    embeddings = get_embedder(EMBED_MODEL)
     vectorstore = Chroma(
         collection_name=COLLECTION_NAME,
         embedding_function=embeddings,
