@@ -6,6 +6,7 @@ Writes: data/store/chroma/  (persistent Chroma collection)
 """
 
 import json
+import time
 from pathlib import Path
 
 from langchain_chroma import Chroma
@@ -62,6 +63,7 @@ def build_index(
 
     # Build in batches
     total = 0
+    start = time.perf_counter()
     for i in range(0, len(chunks), batch_size):
         batch = chunks[i : i + batch_size]
         docs = [chunk_to_document(c) for c in batch]
@@ -84,7 +86,14 @@ def build_index(
 
         total += len(batch)
         pct = total / len(chunks) * 100
-        print(f"  Indexed {total}/{len(chunks)} ({pct:.0f}%)")
+        elapsed = time.perf_counter() - start
+        rate = total / elapsed if elapsed > 0 else 0
+        remaining = len(chunks) - total
+        eta = remaining / rate if rate > 0 else 0
+        print(
+            f"  Indexed {total}/{len(chunks)} ({pct:.0f}%)  "
+            f"elapsed {elapsed:.1f}s  rate {rate:.1f}/s  ETA {eta:.0f}s"
+        )
 
     return total
 

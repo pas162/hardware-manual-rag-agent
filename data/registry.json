@@ -1,8 +1,8 @@
-[ 
-  { 
-    "doc_id":    "YOUR_DOC_ID", 
-    "revision":  "1.00", 
-    "chip_part": "YOUR_CHIP", 
-    "path":      "data/pdfs/your-hardware-um.pdf" 
-  } 
-] 
+[
+  {
+    "doc_id":    "R01UH0890EJ0160",
+    "revision":  "1.60",
+    "chip_part": "RA6M4",
+    "path":      "data/pdfs/r01uh0890ej0160-ra6m4.pdf"
+  }
+]
