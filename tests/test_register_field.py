@@ -17,12 +17,12 @@ def _setup_db(tmp_path):
             peripheral TEXT, register_name TEXT, address TEXT, size_bits INTEGER,
             reset_value TEXT, access TEXT, doc_id TEXT, revision TEXT,
             section_path TEXT, page_start INTEGER, page_end INTEGER, json TEXT,
-            PRIMARY KEY (peripheral, register_name)
+            PRIMARY KEY (peripheral, register_name, doc_id)
         )"""
     )
     con.execute(
         """CREATE TABLE bit_fields (
-            peripheral TEXT, register_name TEXT, bits TEXT, symbol TEXT,
+            peripheral TEXT, register_name TEXT, doc_id TEXT, bits TEXT, symbol TEXT,
             access TEXT, reset TEXT, description TEXT
         )"""
     )
@@ -32,12 +32,12 @@ def _setup_db(tmp_path):
          "TESTDOC", "1.00", "§13.3.2", 284, 284, "{}"),
     )
     con.execute(
-        "INSERT INTO bit_fields VALUES (?,?,?,?,?,?,?)",
-        ("ICU", "IELSRn", "8:0", "IELS[8:0]", "R/W", "0", "Interrupt select"),
+        "INSERT INTO bit_fields VALUES (?,?,?,?,?,?,?,?)",
+        ("ICU", "IELSRn", "TESTDOC", "8:0", "IELS[8:0]", "R/W", "0", "Interrupt select"),
     )
     con.execute(
-        "INSERT INTO bit_fields VALUES (?,?,?,?,?,?,?)",
-        ("ICU", "IELSRn", "16", "IR", "R/W", "0", "Interrupt request flag"),
+        "INSERT INTO bit_fields VALUES (?,?,?,?,?,?,?,?)",
+        ("ICU", "IELSRn", "TESTDOC", "16", "IR", "R/W", "0", "Interrupt request flag"),
     )
     con.commit()
     con.close()

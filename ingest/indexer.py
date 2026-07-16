@@ -53,13 +53,24 @@ def build_index(
     chroma_dir: Path,
     batch_size: int = BATCH_SIZE,
 ) -> int:
-    """Embed all chunks and persist to Chroma. Returns total documents indexed."""
+    """Embed all chunks and persist to Chroma. Returns total documents indexed.
+
+    chunks_jsonl is treated as the complete, authoritative set — any existing
+    collection at chroma_dir is dropped first so re-running (e.g. after adding
+    one new document to a shared chunks.jsonl) never duplicates prior rows.
+    """
     chroma_dir.mkdir(parents=True, exist_ok=True)
+
+    embeddings = get_embedder(EMBED_MODEL)
+    existing = Chroma(
+        collection_name=COLLECTION_NAME,
+        embedding_function=embeddings,
+        persist_directory=str(chroma_dir),
+    )
+    existing.delete_collection()
 
     chunks = load_chunks(chunks_jsonl)
     print(f"Loaded {len(chunks)} chunks")
-
-    embeddings = get_embedder(EMBED_MODEL)
 
     # Build in batches
     total = 0

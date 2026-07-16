@@ -13,7 +13,7 @@ def _setup_db(tmp_path):
 
     records = [
         {
-            "page": 91, "table_idx": 0, "section_path": "§3.3.1",
+            "doc_id": "TESTDOC", "page": 91, "table_idx": 0, "section_path": "§3.3.1",
             "is_register": False, "table_title": "Table 3.1 Selection of operating modes",
             "header": ["Mode-setting pin (MD)", "Operating mode"],
             "rows": [{"Mode-setting pin (MD)": "1", "Operating mode": "Single-chip mode"}],

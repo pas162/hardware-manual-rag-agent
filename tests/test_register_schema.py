@@ -90,7 +90,7 @@ def test_build_register_db_fills_address_from_summary_table_when_prose_is_blank(
         tmp_path,
         tables=[
             {
-                "page": 100, "table_idx": 0, "section_path": "§9",
+                "doc_id": "TESTDOC", "page": 100, "table_idx": 0, "section_path": "§9",
                 "is_register": False, "table_title": "Table 9.1 Register summary",
                 "header": ["Register Name", "Address", "Initial Value", "R/W"],
                 "rows": [
@@ -99,14 +99,14 @@ def test_build_register_db_fills_address_from_summary_table_when_prose_is_blank(
                 ],
             },
             {
-                "page": 101, "table_idx": 0, "section_path": "§9.1", "register_name": "DCR",
+                "doc_id": "TESTDOC", "page": 101, "table_idx": 0, "section_path": "§9.1", "register_name": "DCR",
                 "peripheral": "OSPI", "is_register": True, "table_title": "",
                 "header": ["Bit", "Symbol", "R/W", "Reset", "Description"],
                 "rows": [{"Bit": "0", "Symbol": "EN", "R/W": "R/W", "Reset": "0", "Description": "Enable"}],
             },
         ],
         pages_text=json.dumps({
-            "page": 101, "text": "No address mentioned here.", "section_path": "§9.1",
+            "doc_id": "TESTDOC", "page": 101, "text": "No address mentioned here.", "section_path": "§9.1",
         }) + "\n",
     )
 
@@ -126,19 +126,20 @@ def test_build_register_db_prefers_summary_table_but_falls_back_to_prose_per_fie
         tmp_path,
         tables=[
             {
-                "page": 100, "table_idx": 0, "section_path": "§9",
+                "doc_id": "TESTDOC", "page": 100, "table_idx": 0, "section_path": "§9",
                 "is_register": False, "table_title": "Table 9.1 Register summary",
                 "header": ["Register Name", "Address"],
                 "rows": [{"Register Name": "DCR", "Address": "0x40100000"}],
             },
             {
-                "page": 101, "table_idx": 0, "section_path": "§9.1", "register_name": "DCR",
+                "doc_id": "TESTDOC", "page": 101, "table_idx": 0, "section_path": "§9.1", "register_name": "DCR",
                 "peripheral": "OSPI", "is_register": True, "table_title": "",
                 "header": ["Bit", "Symbol", "R/W", "Reset", "Description"],
                 "rows": [{"Bit": "0", "Symbol": "EN", "R/W": "R/W", "Reset": "0", "Description": "Enable"}],
             },
         ],
         pages_text=json.dumps({
+            "doc_id": "TESTDOC",
             "page": 101,
             "text": "DCR Reset Value: 0x00000000 Access: R/W",
             "section_path": "§9.1",
@@ -163,14 +164,14 @@ def test_build_register_db_defaults_to_empty_string_when_no_source_has_the_field
         tmp_path,
         tables=[
             {
-                "page": 101, "table_idx": 0, "section_path": "§9.1", "register_name": "DCR",
+                "doc_id": "TESTDOC", "page": 101, "table_idx": 0, "section_path": "§9.1", "register_name": "DCR",
                 "peripheral": "OSPI", "is_register": True, "table_title": "",
                 "header": ["Bit", "Symbol", "R/W", "Reset", "Description"],
                 "rows": [{"Bit": "0", "Symbol": "EN", "R/W": "R/W", "Reset": "0", "Description": "Enable"}],
             },
         ],
         pages_text=json.dumps({
-            "page": 101, "text": "No metadata here at all.", "section_path": "§9.1",
+            "doc_id": "TESTDOC", "page": 101, "text": "No metadata here at all.", "section_path": "§9.1",
         }) + "\n",
     )
 

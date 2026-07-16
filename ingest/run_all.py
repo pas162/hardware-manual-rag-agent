@@ -41,81 +41,114 @@ def _done(t0: float, summary: str):
     print(f"  -> {summary}  ({elapsed:.1f}s)")
 
 
-def run_pipeline(skip_figures: bool = False, skip_embed: bool = False) -> None:
+def run_pipeline(
+    skip_figures: bool = False,
+    skip_embed: bool = False,
+    only_doc_id: str | None = None,
+) -> None:
     registry_path = Path("data/registry.json")
     registry = json.loads(registry_path.read_text())
-    doc_info = registry[0]
-    pdf_path = Path(doc_info["path"])
-    doc_id = doc_info["doc_id"]
 
-    if not pdf_path.exists():
-        print(f"ERROR: PDF not found at {pdf_path}")
-        print(f"Place the UM PDF at {pdf_path} and re-run.")
+    docs = [d for d in registry if d["doc_id"] == only_doc_id] if only_doc_id else registry
+    if only_doc_id and not docs:
+        print(f"ERROR: doc_id {only_doc_id!r} not found in {registry_path}")
         sys.exit(1)
+
+    pages_jsonl = Path("data/parsed/pages.jsonl")
+    figures_jsonl = Path("data/parsed/figures.jsonl")
+    tables_jsonl = Path("data/parsed/tables.jsonl")
 
     pipeline_start = time.perf_counter()
 
-    # Step 1: Parse text + TOC
-    t0 = _step("Step 1: Parsing text + TOC")
-    n = parse_text(pdf_path, Path("data/parsed/pages.jsonl"))
-    _done(t0, f"{n} text blocks")
-
-    # Step 2: Extract figures — must run before table detection so figure zones
-    # can be used to exclude false-positive tables inside figures.
-    if not skip_figures:
-        t0 = _step("Step 2: Extracting figures (no VLM — caption matching only)")
-        n = parse_figures(
-            pdf_path=pdf_path,
-            doc_id=doc_id,
-            pages_jsonl=Path("data/parsed/pages.jsonl"),
-            output_jsonl=Path("data/parsed/figures.jsonl"),
-            figures_dir=Path("data/figures"),
-        )
-        _done(t0, f"{n} figures")
+    # Steps 1-3 run once per document, appending doc_id-tagged rows into the
+    # shared intermediates. On a full multi-doc run, clear the files once up
+    # front. On a single-doc re-ingest (only_doc_id), preserve other documents'
+    # rows but drop this doc_id's own rows first so re-running doesn't duplicate.
+    if not only_doc_id:
+        pages_jsonl.parent.mkdir(parents=True, exist_ok=True)
+        for p in (pages_jsonl, figures_jsonl, tables_jsonl):
+            p.write_text("")
     else:
-        print("Step 2: SKIPPED (--skip-figures)")
-        fig_path = Path("data/parsed/figures.jsonl")
-        if not fig_path.exists():
-            fig_path.write_text("")
+        pages_jsonl.parent.mkdir(parents=True, exist_ok=True)
+        for p in (pages_jsonl, figures_jsonl, tables_jsonl):
+            if not p.exists():
+                p.write_text("")
+                continue
+            kept = [
+                line for line in p.read_text(encoding="utf-8").splitlines(keepends=True)
+                if line.strip() and json.loads(line).get("doc_id") != only_doc_id
+            ]
+            p.write_text("".join(kept), encoding="utf-8")
 
-    # Step 3: Detect tables (uses figures.jsonl to skip figure-zone detections)
-    t0 = _step("Step 3: Detecting tables")
-    n = parse_tables(
-        pdf_path,
-        Path("data/parsed/tables.jsonl"),
-        pages_jsonl=Path("data/parsed/pages.jsonl"),
-        figures_jsonl=Path("data/parsed/figures.jsonl"),
-    )
-    _done(t0, f"{n} tables")
+    t0 = _step(f"Steps 1-3: Parsing {len(docs)} document(s)")
+    for doc_info in docs:
+        pdf_path = Path(doc_info["path"])
+        doc_id = doc_info["doc_id"]
+
+        if not pdf_path.exists():
+            print(f"  WARNING: PDF not found at {pdf_path} — skipping {doc_id}")
+            continue
+
+        print(f"  -- {doc_id} ({pdf_path}) --")
+        mode = "a"
+        n = parse_text(pdf_path, pages_jsonl, doc_id=doc_id, mode=mode)
+        print(f"     Step 1: {n} text blocks")
+
+        if not skip_figures:
+            n = parse_figures(
+                pdf_path=pdf_path,
+                doc_id=doc_id,
+                pages_jsonl=pages_jsonl,
+                output_jsonl=figures_jsonl,
+                figures_dir=Path("data/figures"),
+                mode=mode,
+            )
+            print(f"     Step 2: {n} figures")
+        elif not figures_jsonl.exists():
+            figures_jsonl.write_text("")
+
+        n = parse_tables(
+            pdf_path,
+            tables_jsonl,
+            pages_jsonl=pages_jsonl,
+            figures_jsonl=figures_jsonl,
+            doc_id=doc_id,
+            mode=mode,
+        )
+        print(f"     Step 3: {n} tables")
+    _done(t0, "parsing complete")
 
     # Step 4: Build SQLite register database
     t0 = _step("Step 4: Building SQLite register database")
     n = build_register_db(
-        Path("data/parsed/tables.jsonl"),
-        Path("data/parsed/pages.jsonl"),
+        tables_jsonl,
+        pages_jsonl,
         registry_path,
         Path("data/store/registers.db"),
+        only_doc_id=only_doc_id,
     )
     _done(t0, f"{n} registers")
 
     # Step 5: Build SQLite general_tables database (non-register tables)
     t0 = _step("Step 5: Building SQLite general_tables database")
     n = build_general_tables_db(
-        Path("data/parsed/tables.jsonl"),
+        tables_jsonl,
         registry_path,
         Path("data/store/registers.db"),
+        only_doc_id=only_doc_id,
     )
     _done(t0, f"{n} general tables")
 
     # Step 6: Build chunks
     t0 = _step("Step 6: Building chunks")
     counts = build_chunks(
-        Path("data/parsed/pages.jsonl"),
-        Path("data/parsed/figures.jsonl"),
-        Path("data/parsed/tables.jsonl"),
+        pages_jsonl,
+        figures_jsonl,
+        tables_jsonl,
         Path("data/store/registers.db"),
         registry_path,
         Path("data/parsed/chunks.jsonl"),
+        only_doc_id=only_doc_id,
     )
     total = sum(counts.values())
     _done(t0, f"{total} chunks {counts}")

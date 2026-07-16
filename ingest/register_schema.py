@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS registers (
     page_start    INTEGER,
     page_end      INTEGER,
     json          TEXT,
-    PRIMARY KEY (peripheral, register_name)
+    PRIMARY KEY (peripheral, register_name, doc_id)
 );
 """
 
@@ -46,12 +46,13 @@ CREATE_BIT_FIELDS = """
 CREATE TABLE IF NOT EXISTS bit_fields (
     peripheral    TEXT,
     register_name TEXT,
+    doc_id        TEXT,
     bits          TEXT,
     symbol        TEXT,
     access        TEXT,
     reset         TEXT,
     description   TEXT,
-    FOREIGN KEY (peripheral, register_name) REFERENCES registers(peripheral, register_name)
+    FOREIGN KEY (peripheral, register_name, doc_id) REFERENCES registers(peripheral, register_name, doc_id)
 );
 """
 
@@ -77,12 +78,18 @@ _RE_PERIPHERAL_SECTION = re.compile(
 )
 
 
-def _build_page_index(pages_jsonl: Path) -> dict[int, list[dict]]:
-    """Return dict mapping page_number -> list of text block dicts."""
+def _build_page_index(pages_jsonl: Path, doc_id: str = "") -> dict[int, list[dict]]:
+    """Return dict mapping page_number -> list of text block dicts.
+
+    When doc_id is provided, only rows matching that doc_id are included so
+    the index is scoped to a single document in a multi-doc pages.jsonl.
+    """
     index: dict[int, list[dict]] = {}
     with pages_jsonl.open(encoding="utf-8") as f:
         for line in f:
             b = json.loads(line)
+            if doc_id and b.get("doc_id") != doc_id:
+                continue
             index.setdefault(b["page"], []).append(b)
     return index
 
@@ -105,15 +112,19 @@ def _find_column(row_lower: dict[str, str], aliases: list[str]) -> str:
     return ""
 
 
-def _build_summary_table_index(tables_jsonl: Path) -> dict[str, dict]:
+def _build_summary_table_index(tables_jsonl: Path, doc_id: str = "") -> dict[str, dict]:
     """Scan tables.jsonl for address-map/register-summary tables (is_register=False,
     but with a register-name column and >=1 address/reset/access column) and build
     register_name -> {"address", "reset_value", "access"} for fallback lookups.
+
+    When doc_id is provided, only rows matching that doc_id are scanned.
     """
     index: dict[str, dict] = {}
     with tables_jsonl.open(encoding="utf-8") as f:
         for line in f:
             table = json.loads(line)
+            if doc_id and table.get("doc_id") != doc_id:
+                continue
             if table.get("is_register"):
                 continue
             header = table.get("header", [])
@@ -221,97 +232,119 @@ def build_register_db(
     pages_jsonl: Path,
     registry_path: Path,
     db_path: Path,
+    only_doc_id: str | None = None,
 ) -> int:
-    """Build SQLite register DB. Returns number of registers inserted."""
+    """Build SQLite register DB for all documents in registry (or just only_doc_id).
+
+    Returns total registers inserted (for the processed documents).
+    """
     registry = json.loads(registry_path.read_text())
-    doc_info = registry[0]
-    doc_id = doc_info["doc_id"]
-    revision = doc_info["revision"]
+    if only_doc_id:
+        registry = [d for d in registry if d["doc_id"] == only_doc_id]
 
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    page_index = _build_page_index(pages_jsonl)
-    summary_index = _build_summary_table_index(tables_jsonl)
-
     con = sqlite3.connect(str(db_path))
     cur = con.cursor()
     cur.executescript(CREATE_REGISTERS + CREATE_BIT_FIELDS)
 
-    count = 0
-    with tables_jsonl.open(encoding="utf-8") as f:
-        for line_no, line in enumerate(f):
-            table = json.loads(line)
-            # Only process register tables (general/lookup tables are chunked separately)
-            if not table.get("is_register", True):
-                continue
-            page = table["page"]
-            rows = table.get("rows", [])
-            page_blocks = page_index.get(page, [])
+    total_count = 0
 
-            # Use pre-extracted register_name/peripheral from parser_tables if available,
-            # fall back to heuristic prose extraction only when missing.
-            reg_name = table.get("register_name") or ""
-            peripheral = table.get("peripheral") or ""
-            section_path = table.get("section_path") or ""
+    for doc_info in registry:
+        doc_id = doc_info["doc_id"]
+        revision = doc_info["revision"]
 
-            if not reg_name or not peripheral or not section_path:
-                header_info = _extract_register_header(page_blocks, page)
-                reg_name = reg_name or header_info["register_name"] or f"REG_{line_no}"
-                peripheral = peripheral or header_info["peripheral"]
-                section_path = section_path or header_info["section_path"] or ""
+        # Build per-document indexes (filter shared intermediates by doc_id)
+        page_index = _build_page_index(pages_jsonl, doc_id)
+        summary_index = _build_summary_table_index(tables_jsonl, doc_id)
 
-            # Fallback chain: address-map/register-summary table → prose scrape.
-            combined = " ".join(b["text"] for b in page_blocks)
-            summary = summary_index.get(reg_name.upper(), {})
+        count = 0
+        with tables_jsonl.open(encoding="utf-8") as f:
+            for line_no, line in enumerate(f):
+                table = json.loads(line)
+                # Skip rows belonging to other documents (or lacking a doc_id entirely)
+                if table.get("doc_id") != doc_id:
+                    continue
+                # Only process register tables (general/lookup tables are chunked separately)
+                if not table.get("is_register", True):
+                    continue
+                page = table["page"]
+                rows = table.get("rows", [])
+                page_blocks = page_index.get(page, [])
 
-            address = summary.get("address", "")
-            if not address:
-                addr_match = _RE_ADDRESS.search(combined)
-                address = addr_match.group(1).strip() if addr_match else ""
+                # Use pre-extracted register_name/peripheral from parser_tables if available,
+                # fall back to heuristic prose extraction only when missing.
+                reg_name = table.get("register_name") or ""
+                peripheral = table.get("peripheral") or ""
+                section_path = table.get("section_path") or ""
 
-            reset_value = summary.get("reset_value", "")
-            if not reset_value:
-                reset_match = _RE_RESET.search(combined)
-                reset_value = reset_match.group(1).strip() if reset_match else ""
+                if not reg_name or not peripheral or not section_path:
+                    header_info = _extract_register_header(page_blocks, page)
+                    reg_name = reg_name or header_info["register_name"] or f"REG_{line_no}"
+                    peripheral = peripheral or header_info["peripheral"]
+                    section_path = section_path or header_info["section_path"] or ""
 
-            access = summary.get("access", "")
-            if not access:
-                access_match = _RE_ACCESS.search(combined)
-                access = access_match.group(1) if access_match else ""
+                # Fallback chain: address-map/register-summary table → prose scrape.
+                combined = " ".join(b["text"] for b in page_blocks)
+                summary = summary_index.get(reg_name.upper(), {})
 
-            bit_fields = _parse_bit_field_rows(rows)
-            full_json = json.dumps({
-                "register_name": reg_name,
-                "address": address,
-                "reset_value": reset_value,
-                "access": access,
-                "bit_fields": bit_fields,
-            })
+                address = summary.get("address", "")
+                if not address:
+                    addr_match = _RE_ADDRESS.search(combined)
+                    address = addr_match.group(1).strip() if addr_match else ""
 
-            # Upsert register
-            cur.execute(
-                """
-                INSERT OR REPLACE INTO registers
-                  (peripheral, register_name, address, size_bits, reset_value, access,
-                   doc_id, revision, section_path, page_start, page_end, json)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-                """,
-                (
-                    peripheral, reg_name, address, 32, reset_value, access,
-                    doc_id, revision, section_path, page, page, full_json,
-                ),
-            )
+                reset_value = summary.get("reset_value", "")
+                if not reset_value:
+                    reset_match = _RE_RESET.search(combined)
+                    reset_value = reset_match.group(1).strip() if reset_match else ""
 
-            for bf in bit_fields:
+                access = summary.get("access", "")
+                if not access:
+                    access_match = _RE_ACCESS.search(combined)
+                    access = access_match.group(1) if access_match else ""
+
+                bit_fields = _parse_bit_field_rows(rows)
+                full_json = json.dumps({
+                    "register_name": reg_name,
+                    "address": address,
+                    "reset_value": reset_value,
+                    "access": access,
+                    "bit_fields": bit_fields,
+                })
+
+                # Upsert register (keyed by peripheral+register_name+doc_id so the
+                # same register name in a different document doesn't collide)
                 cur.execute(
                     """
-                    INSERT INTO bit_fields
-                      (peripheral, register_name, bits, symbol, access, reset, description)
-                    VALUES (?,?,?,?,?,?,?)
+                    INSERT OR REPLACE INTO registers
+                      (peripheral, register_name, address, size_bits, reset_value, access,
+                       doc_id, revision, section_path, page_start, page_end, json)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
                     """,
-                    (peripheral, reg_name, bf["bits"], bf["symbol"],
-                     bf["access"], bf["reset"], bf["description"]),
+                    (
+                        peripheral, reg_name, address, 32, reset_value, access,
+                        doc_id, revision, section_path, page, page, full_json,
+                    ),
                 )
-            count += 1
+
+                # Clear any previously-inserted bit_fields for this exact register+doc
+                # (INSERT OR REPLACE above may be re-upserting an existing register).
+                cur.execute(
+                    "DELETE FROM bit_fields WHERE peripheral = ? AND register_name = ? AND doc_id = ?",
+                    (peripheral, reg_name, doc_id),
+                )
+                for bf in bit_fields:
+                    cur.execute(
+                        """
+                        INSERT INTO bit_fields
+                          (peripheral, register_name, doc_id, bits, symbol, access, reset, description)
+                        VALUES (?,?,?,?,?,?,?,?)
+                        """,
+                        (peripheral, reg_name, doc_id, bf["bits"], bf["symbol"],
+                         bf["access"], bf["reset"], bf["description"]),
+                    )
+                count += 1
+
+        total_count += count
 
     con.commit()
 
@@ -321,13 +354,13 @@ def build_register_db(
     if missing_address or missing_reset or missing_access:
         print(
             f"  [register_schema] after fallback chain: "
-            f"{missing_address}/{count} missing address, "
-            f"{missing_reset}/{count} missing reset_value, "
-            f"{missing_access}/{count} missing access"
+            f"{missing_address}/{total_count} missing address, "
+            f"{missing_reset}/{total_count} missing reset_value, "
+            f"{missing_access}/{total_count} missing access"
         )
 
     con.close()
-    return count
+    return total_count
 
 
 if __name__ == "__main__":
@@ -349,6 +382,7 @@ if __name__ == "__main__":
     row = cur.execute(
         "SELECT r.register_name, r.address, COUNT(bf.bits) FROM registers r "
         "LEFT JOIN bit_fields bf ON r.peripheral=bf.peripheral AND r.register_name=bf.register_name "
+        "AND r.doc_id=bf.doc_id "
         "WHERE r.register_name LIKE 'SCKCR%' GROUP BY r.peripheral, r.register_name"
     ).fetchone()
     if row:

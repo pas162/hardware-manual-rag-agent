@@ -53,8 +53,15 @@ def _resolve_section(toc_index: list[tuple[int, str]], page_0: int) -> str | Non
     return result
 
 
-def parse_text(pdf_path: str | Path, output_path: str | Path) -> int:
+def parse_text(
+    pdf_path: str | Path, output_path: str | Path, doc_id: str = "", mode: str = "w"
+) -> int:
     """Parse all text blocks from *pdf_path* and write JSONL to *output_path*.
+
+    doc_id is stamped onto every record so multiple documents can share the
+    same output file (see mode="a") and still be filtered apart downstream.
+    mode="a" appends to an existing file instead of overwriting it — used by
+    run_all.py when ingesting more than one document into shared intermediates.
 
     Returns number of blocks written.
     """
@@ -67,7 +74,7 @@ def parse_text(pdf_path: str | Path, output_path: str | Path) -> int:
     toc_index = _build_toc_index(toc)
 
     count = 0
-    with output_path.open("w", encoding="utf-8") as fout:
+    with output_path.open(mode, encoding="utf-8") as fout:
         for page_num in range(len(doc)):
             page = doc[page_num]
             blocks = page.get_text("blocks")  # list of (x0,y0,x1,y1,text,block_no,block_type)
@@ -80,6 +87,7 @@ def parse_text(pdf_path: str | Path, output_path: str | Path) -> int:
                 if not text:
                     continue
                 record = {
+                    "doc_id": doc_id,
                     "page": page_num + 1,  # 1-indexed for humans
                     "bbox": [round(x0, 1), round(y0, 1), round(x1, 1), round(y1, 1)],
                     "text": text,
@@ -103,7 +111,7 @@ if __name__ == "__main__":
     output_path = Path("data/parsed/pages.jsonl")
 
     print(f"Parsing {pdf_path} ...")
-    n = parse_text(pdf_path, output_path)
+    n = parse_text(pdf_path, output_path, doc_id=doc_info["doc_id"])
     print(f"Wrote {n} text blocks to {output_path}")
 
     # Checkpoint: sample blocks on pages 50-100

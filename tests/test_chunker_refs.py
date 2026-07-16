@@ -44,7 +44,7 @@ def test_extract_case_insensitive():
 def test_prose_chunks_include_ref_fields(tmp_path):
     pages_jsonl = tmp_path / "pages.jsonl"
     pages_jsonl.write_text(
-        '{"section_path": "§13 > §13.1", "page": 280, "bbox": [0, 0, 0, 0], '
+        '{"doc_id": "DOC", "section_path": "§13 > §13.1", "page": 280, "bbox": [0, 0, 0, 0], '
         '"text": "See Figure 13.2 and Table 4.1 for details."}\n',
         encoding="utf-8",
     )

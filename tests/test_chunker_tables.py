@@ -58,7 +58,7 @@ def _write_tables_jsonl(tmp_path, records):
 def test_general_table_chunks_table_3_1_emits_summary_and_rows(tmp_path):
     header, rows = _rows_to_dicts(TABLE_3_1_ROWS)
     record = {
-        "page": 91, "table_idx": 0, "section_path": "§3.3.1",
+        "doc_id": "TESTDOC", "page": 91, "table_idx": 0, "section_path": "§3.3.1",
         "is_register": False,
         "table_title": "Table 3.1 Selection of operating modes by the mode-setting pin",
         "header": header, "rows": rows,
@@ -80,7 +80,7 @@ def test_general_table_chunks_table_3_1_emits_summary_and_rows(tmp_path):
 def test_general_table_chunks_table_4_1_multilevel_header(tmp_path):
     header, rows = _rows_to_dicts(TABLE_4_1_ROWS)
     record = {
-        "page": 93, "table_idx": 0, "section_path": "§4.2",
+        "doc_id": "TESTDOC", "page": 93, "table_idx": 0, "section_path": "§4.2",
         "is_register": False,
         "table_title": "Table 4.1 Capacity of the code flash memory, data flash memory, and SRAM0",
         "header": header, "rows": rows,
@@ -115,12 +115,12 @@ def test_general_table_chunks_skips_register_tables(tmp_path):
 def test_general_table_chunks_disambiguates_duplicate_table_ids(tmp_path):
     records = [
         {
-            "page": 12, "table_idx": 0, "section_path": "§1",
+            "doc_id": "TESTDOC", "page": 12, "table_idx": 0, "section_path": "§1",
             "is_register": False, "table_title": "",
             "header": ["A", "B"], "rows": [{"A": "1", "B": "2"}],
         },
         {
-            "page": 12, "table_idx": 1, "section_path": "§1",
+            "doc_id": "TESTDOC", "page": 12, "table_idx": 1, "section_path": "§1",
             "is_register": False, "table_title": "",
             "header": ["A", "B"], "rows": [{"A": "3", "B": "4"}],
         },

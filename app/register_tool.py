@@ -69,10 +69,10 @@ def register_lookup(name: str, chip_part: str, db_path: Path = _DB_PATH) -> list
             """
             SELECT bits, symbol, access, reset, description
             FROM bit_fields
-            WHERE peripheral = ? AND register_name = ?
+            WHERE peripheral = ? AND register_name = ? AND doc_id = ?
             ORDER BY rowid
             """,
-            (row["peripheral"], row["register_name"]),
+            (row["peripheral"], row["register_name"], doc_id),
         )
         bit_fields = [
             {
@@ -167,10 +167,10 @@ def query_register_field(
         """
         SELECT bits, symbol, access, reset, description
         FROM bit_fields
-        WHERE peripheral = ? AND register_name = ?
+        WHERE peripheral = ? AND register_name = ? AND doc_id = ?
         ORDER BY rowid
         """,
-        (reg_row["peripheral"], reg_row["register_name"]),
+        (reg_row["peripheral"], reg_row["register_name"], doc_id),
     )
     field_rows = cur.fetchall()
     con.close()

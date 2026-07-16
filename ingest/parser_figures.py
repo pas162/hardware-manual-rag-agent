@@ -231,8 +231,14 @@ def parse_figures(
     figures_dir: Path,
     cache_path: Path | None = None,
     openai_client=None,
+    mode: str = "w",
 ) -> int:
-    """Extract figure images and pair with PDF captions. Returns number of figures emitted."""
+    """Extract figure images and pair with PDF captions. Returns number of figures emitted.
+
+    doc_id is stamped onto every output record so multiple documents can share
+    the same output_jsonl (see mode="a") and still be filtered apart downstream.
+    mode="a" appends instead of overwriting — used by run_all.py for multi-doc runs.
+    """
     pdf_path = Path(pdf_path)
     out_dir = Path(figures_dir) / doc_id
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -243,14 +249,16 @@ def parse_figures(
     with Path(pages_jsonl).open(encoding="utf-8") as f:
         for line in f:
             b = json.loads(line)
-            page_blocks.setdefault(b["page"], []).append(b)
+            # Only load blocks for this document (pages_jsonl may be multi-doc)
+            if b.get("doc_id") == doc_id:
+                page_blocks.setdefault(b["page"], []).append(b)
 
     doc = pymupdf.open(str(pdf_path))
     count = 0
     seen: dict[str, int] = {}
 
     total_pages = len(doc)
-    with output_jsonl.open("w", encoding="utf-8") as fout:
+    with output_jsonl.open(mode, encoding="utf-8") as fout:
         for page_num in range(total_pages):
             if page_num % 50 == 0:
                 print(f"    page {page_num + 1}/{total_pages} ({page_num * 100 // total_pages}%)  figures so far: {count}", flush=True)
@@ -292,6 +300,7 @@ def parse_figures(
                     str(Path("data/figures") / doc_id / img_filename).replace("\\", "/")
                 )
                 record = {
+                    "doc_id": doc_id,
                     "page": page_1,
                     "figure_id": figure_id,
                     "caption": cap["caption"],

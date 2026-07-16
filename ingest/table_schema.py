@@ -65,12 +65,15 @@ def build_general_tables_db(
     tables_jsonl: Path,
     registry_path: Path,
     db_path: Path,
+    only_doc_id: str | None = None,
 ) -> int:
-    """Build the general_tables SQLite table. Returns number of tables inserted."""
+    """Build the general_tables SQLite table for all documents in registry (or just only_doc_id).
+
+    Returns total number of tables inserted.
+    """
     registry = json.loads(registry_path.read_text())
-    doc_info = registry[0]
-    doc_id = doc_info["doc_id"]
-    chip_part = doc_info["chip_part"]
+    if only_doc_id:
+        registry = [d for d in registry if d["doc_id"] == only_doc_id]
 
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -78,47 +81,58 @@ def build_general_tables_db(
     cur = con.cursor()
     cur.executescript(CREATE_GENERAL_TABLES)
 
-    count = 0
-    seen_ids: set[str] = set()
-    with tables_jsonl.open(encoding="utf-8") as f:
-        for line in f:
-            table = json.loads(line)
-            header = [str(h).strip() for h in table.get("header", []) if h]
-            rows = table.get("rows", [])
+    total_count = 0
 
-            # Register tables are stored in registers/bit_fields, not here.
-            if table.get("is_register") or any(_RE_BIT_HEADER.match(h) for h in header):
-                continue
-            if not header or not rows:
-                continue
+    for doc_info in registry:
+        doc_id = doc_info["doc_id"]
+        chip_part = doc_info["chip_part"]
 
-            table_title = table.get("table_title", "")
-            page = table["page"]
-            table_id = make_table_id(table_title, page, table.get("table_idx", 0))
-            # Disambiguate tables that collide on the same derived id (e.g. no title, same page)
-            base_id = table_id
-            suffix = 1
-            while table_id in seen_ids:
-                table_id = f"{base_id}-{suffix}"
-                suffix += 1
-            seen_ids.add(table_id)
+        count = 0
+        seen_ids: set[str] = set()
+        with tables_jsonl.open(encoding="utf-8") as f:
+            for line in f:
+                table = json.loads(line)
+                # Skip rows belonging to other documents (or lacking a doc_id entirely)
+                if table.get("doc_id") != doc_id:
+                    continue
+                header = [str(h).strip() for h in table.get("header", []) if h]
+                rows = table.get("rows", [])
 
-            markdown = render_markdown(header, rows, table_title)
-            section_path = table.get("section_path") or "§UNKNOWN"
+                # Register tables are stored in registers/bit_fields, not here.
+                if table.get("is_register") or any(_RE_BIT_HEADER.match(h) for h in header):
+                    continue
+                if not header or not rows:
+                    continue
 
-            cur.execute(
-                """
-                INSERT OR REPLACE INTO general_tables
-                  (table_id, title, markdown, doc_id, chip_part, section_path, page)
-                VALUES (?,?,?,?,?,?,?)
-                """,
-                (table_id, table_title, markdown, doc_id, chip_part, section_path, page),
-            )
-            count += 1
+                table_title = table.get("table_title", "")
+                page = table["page"]
+                table_id = make_table_id(table_title, page, table.get("table_idx", 0))
+                # Disambiguate tables that collide on the same derived id (e.g. no title, same page)
+                base_id = table_id
+                suffix = 1
+                while table_id in seen_ids:
+                    table_id = f"{base_id}-{suffix}"
+                    suffix += 1
+                seen_ids.add(table_id)
+
+                markdown = render_markdown(header, rows, table_title)
+                section_path = table.get("section_path") or "§UNKNOWN"
+
+                cur.execute(
+                    """
+                    INSERT OR REPLACE INTO general_tables
+                      (table_id, title, markdown, doc_id, chip_part, section_path, page)
+                    VALUES (?,?,?,?,?,?,?)
+                    """,
+                    (table_id, table_title, markdown, doc_id, chip_part, section_path, page),
+                )
+                count += 1
+
+        total_count += count
 
     con.commit()
     con.close()
-    return count
+    return total_count
 
 
 if __name__ == "__main__":

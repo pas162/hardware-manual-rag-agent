@@ -261,13 +261,18 @@ def _extract_register_name(section_path: str, page_blocks: list[dict]) -> tuple[
     return "", peripheral
 
 
-def _build_figure_zones(figures_jsonl: Path) -> dict[int, list[tuple[float, float]]]:
+def _build_figure_zones(
+    figures_jsonl: Path, doc_id: str = ""
+) -> dict[int, list[tuple[float, float]]]:
     """Return page -> list of (crop_y0, crop_y1) figure regions.
 
     Uses the precise crop coordinates saved by parser_figures so we can
     detect exact overlap between a pdfplumber table bbox and a figure region.
     Falls back to (caption_y - page_height*0.45, caption_y1) when crop coords
     are not available (old figures.jsonl without these fields).
+
+    Only rows matching doc_id are considered when figures_jsonl holds rows
+    from more than one document.
     """
     zones: dict[int, list[tuple[float, float]]] = {}
     if not figures_jsonl.exists():
@@ -275,6 +280,8 @@ def _build_figure_zones(figures_jsonl: Path) -> dict[int, list[tuple[float, floa
     with figures_jsonl.open(encoding="utf-8") as f:
         for line in f:
             fig = json.loads(line)
+            if fig.get("doc_id") != doc_id:
+                continue
             page = fig.get("page")
             if not page:
                 continue
@@ -312,8 +319,15 @@ def parse_tables(
     output_path: str | Path,
     pages_jsonl: Path | None = None,
     figures_jsonl: Path | None = None,
+    doc_id: str = "",
+    mode: str = "w",
 ) -> int:
     """Detect tables and write JSONL to *output_path*.
+
+    doc_id is stamped onto every record and used to filter pages_jsonl/
+    figures_jsonl rows down to this document when those files hold rows from
+    more than one document. mode="a" appends instead of overwriting — used by
+    run_all.py for multi-doc runs.
 
     Returns number of tables written.
     """
@@ -322,18 +336,21 @@ def parse_tables(
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Build figure zone index to exclude table detections inside figures
-    figure_zones = _build_figure_zones(Path(figures_jsonl)) if figures_jsonl else {}
+    figure_zones = (
+        _build_figure_zones(Path(figures_jsonl), doc_id) if figures_jsonl else {}
+    )
 
-    # Build page → blocks index if pages_jsonl provided
+    # Build page → blocks index if pages_jsonl provided (this document's rows only)
     page_blocks: dict[int, list[dict]] = {}
     if pages_jsonl and Path(pages_jsonl).exists():
         with Path(pages_jsonl).open(encoding="utf-8") as f:
             for line in f:
                 b = json.loads(line)
-                page_blocks.setdefault(b["page"], []).append(b)
+                if b.get("doc_id") == doc_id:
+                    page_blocks.setdefault(b["page"], []).append(b)
 
     count = 0
-    with pdfplumber.open(str(pdf_path)) as pdf, output_path.open("w", encoding="utf-8") as fout:
+    with pdfplumber.open(str(pdf_path)) as pdf, output_path.open(mode, encoding="utf-8") as fout:
         total_pages = len(pdf.pages)
         for page_num, page in enumerate(pdf.pages):
             if page_num % 100 == 0:
@@ -385,6 +402,7 @@ def parse_tables(
                         continue
 
                 record = {
+                    "doc_id": doc_id,
                     "page": pn,
                     "table_idx": table_idx,
                     "section_path": section_path,
@@ -415,6 +433,7 @@ if __name__ == "__main__":
         output_path,
         pages_jsonl=Path("data/parsed/pages.jsonl"),
         figures_jsonl=Path("data/parsed/figures.jsonl"),
+        doc_id=doc_info["doc_id"],
     )
     print(f"Found {n} register tables → {output_path}")
 

@@ -36,13 +36,13 @@ def test_build_general_tables_db_excludes_register_tables(tmp_path):
 
     records = [
         {
-            "page": 91, "table_idx": 0, "section_path": "§3.3.1",
+            "doc_id": "TESTDOC", "page": 91, "table_idx": 0, "section_path": "§3.3.1",
             "is_register": False, "table_title": "Table 3.1 Selection of operating modes",
             "header": ["Mode-setting pin (MD)", "Operating mode"],
             "rows": [{"Mode-setting pin (MD)": "1", "Operating mode": "Single-chip mode"}],
         },
         {
-            "page": 50, "table_idx": 0, "section_path": "§5.1",
+            "doc_id": "TESTDOC", "page": 50, "table_idx": 0, "section_path": "§5.1",
             "is_register": True, "table_title": "SCKCR : System Clock Control Register",
             "header": ["Bit", "Symbol", "R/W"],
             "rows": [{"Bit": "0", "Symbol": "CKSEL", "R/W": "R/W"}],
@@ -80,12 +80,12 @@ def test_build_general_tables_db_disambiguates_duplicate_ids(tmp_path):
     # Two untitled tables on the same page collide on the fallback table_id.
     records = [
         {
-            "page": 12, "table_idx": 0, "section_path": "§1",
+            "doc_id": "TESTDOC", "page": 12, "table_idx": 0, "section_path": "§1",
             "is_register": False, "table_title": "",
             "header": ["A", "B"], "rows": [{"A": "1", "B": "2"}],
         },
         {
-            "page": 12, "table_idx": 1, "section_path": "§1",
+            "doc_id": "TESTDOC", "page": 12, "table_idx": 1, "section_path": "§1",
             "is_register": False, "table_title": "",
             "header": ["A", "B"], "rows": [{"A": "3", "B": "4"}],
         },

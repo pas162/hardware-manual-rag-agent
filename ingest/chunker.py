@@ -73,11 +73,13 @@ def _prose_chunks(
         separators=["\n\n", "\n", ". ", " ", ""],
     )
 
-    # Group blocks by section_path
+    # Group blocks by section_path (only rows belonging to this document)
     sections: dict[str, list[dict]] = {}
     with pages_jsonl.open(encoding="utf-8") as f:
         for line in f:
             b = json.loads(line)
+            if b.get("doc_id") != doc_id:
+                continue
             key = b.get("section_path") or "§UNKNOWN"
             sections.setdefault(key, []).append(b)
 
@@ -132,6 +134,7 @@ def _register_row_chunks(
                bf.bits, bf.symbol, bf.access, bf.reset, bf.description
         FROM registers r
         JOIN bit_fields bf ON r.peripheral = bf.peripheral AND r.register_name = bf.register_name
+               AND r.doc_id = bf.doc_id
         WHERE r.doc_id = ?
     """, (doc_id,))
 
@@ -176,6 +179,8 @@ def _figure_chunks(
     with figures_jsonl.open(encoding="utf-8") as f:
         for line in f:
             fig = json.loads(line)
+            if fig.get("doc_id") != doc_id:
+                continue
             section_path = fig.get("section_path") or "§UNKNOWN"
             figure_id = fig.get("figure_id") or ""
             caption = fig.get("caption") or ""
@@ -242,6 +247,8 @@ def _general_table_chunks(
     with tables_jsonl.open(encoding="utf-8") as f:
         for line in f:
             table = json.loads(line)
+            if table.get("doc_id") != doc_id:
+                continue
             header = [str(h).strip() for h in table.get("header", []) if h]
             rows = table.get("rows", [])
 
@@ -315,21 +322,40 @@ def build_chunks(
     db_path: Path,
     registry_path: Path,
     output_path: Path,
+    only_doc_id: str | None = None,
 ) -> dict[str, int]:
-    """Build all chunks and write to output_path. Returns counts by element_type."""
+    """Build chunks for every document in registry (or just only_doc_id), write to output_path.
+
+    When only_doc_id is set, chunks already in output_path for OTHER documents
+    are preserved; only this doc_id's chunks are recomputed.
+
+    Returns counts by element_type (summed across all documents in the output).
+    """
     registry = json.loads(registry_path.read_text())
-    doc_info = registry[0]
-    doc_id = doc_info["doc_id"]
-    revision = doc_info["revision"]
-    chip_part = doc_info["chip_part"]
+    docs = [d for d in registry if d["doc_id"] == only_doc_id] if only_doc_id else registry
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     all_chunks: list[dict] = []
-    all_chunks += _prose_chunks(pages_jsonl, doc_id, revision, chip_part)
-    all_chunks += _register_row_chunks(db_path, doc_id, revision, chip_part)
-    all_chunks += _figure_chunks(figures_jsonl, doc_id, revision, chip_part)
-    all_chunks += _general_table_chunks(tables_jsonl, doc_id, revision, chip_part)
+    if only_doc_id and output_path.exists():
+        with output_path.open(encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                chunk = json.loads(line)
+                if chunk.get("doc_id") != only_doc_id:
+                    all_chunks.append(chunk)
+
+    for doc_info in docs:
+        doc_id = doc_info["doc_id"]
+        revision = doc_info["revision"]
+        chip_part = doc_info["chip_part"]
+
+        all_chunks += _prose_chunks(pages_jsonl, doc_id, revision, chip_part)
+        all_chunks += _register_row_chunks(db_path, doc_id, revision, chip_part)
+        all_chunks += _figure_chunks(figures_jsonl, doc_id, revision, chip_part)
+        all_chunks += _general_table_chunks(tables_jsonl, doc_id, revision, chip_part)
 
     counts: dict[str, int] = {}
     with output_path.open("w", encoding="utf-8") as fout:
